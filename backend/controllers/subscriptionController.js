@@ -1,21 +1,22 @@
 // controllers/subscriptionController.js
 const Subscription = require("../models/Subscription");
 
+/* Helper: standard success response wrapper */
 const success = (res, status, data) =>
   res
     .status(status)
     .json({ statusCode: status, success: true, error: null, data });
 
+/* Helper: standard failure response wrapper */
 const failure = (res, status, message, details = null) =>
-  res
-    .status(status)
-    .json({
-      statusCode: status,
-      success: false,
-      error: { message, details },
-      data: null,
-    });
+  res.status(status).json({
+    statusCode: status,
+    success: false,
+    error: { message, details },
+    data: null,
+  });
 
+/* Create a new subscription plan */
 exports.create = async (req, res) => {
   try {
     const sub = new Subscription(req.body);
@@ -30,6 +31,7 @@ exports.create = async (req, res) => {
   }
 };
 
+/* List subscription plans (optional ?isActive=true filter) */
 exports.list = async (req, res) => {
   try {
     const filter = {};
@@ -44,6 +46,7 @@ exports.list = async (req, res) => {
   }
 };
 
+/* Get a single subscription by ID */
 exports.get = async (req, res) => {
   try {
     const sub = await Subscription.findById(req.params.id);
@@ -55,11 +58,12 @@ exports.get = async (req, res) => {
   }
 };
 
+/* Update a subscription plan (full/partial) */
 exports.update = async (req, res) => {
   try {
     const sub = await Subscription.findByIdAndUpdate(req.params.id, req.body, {
       new: true,
-      runValidators: true, // important to validate updates too
+      runValidators: true, // validate on updates
     });
     if (!sub) return failure(res, 404, "Subscription not found");
     return success(res, 200, { subscription: sub });
@@ -72,6 +76,7 @@ exports.update = async (req, res) => {
   }
 };
 
+/* Delete a subscription plan */
 exports.remove = async (req, res) => {
   try {
     const sub = await Subscription.findByIdAndDelete(req.params.id);
