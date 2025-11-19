@@ -11,7 +11,7 @@ const connectDB = require("./config/db");
 
 const PORT = process.env.PORT || 3000;
 
-// Connect to DB first
+// Connect to DB first before starting server
 connectDB();
 
 const server = http.createServer(app);
@@ -19,3 +19,4 @@ const server = http.createServer(app);
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+// console.log(`Server running on port ${PORT}`);

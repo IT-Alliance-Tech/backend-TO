@@ -22,7 +22,9 @@ connectDB();
 // Core middlewares
 app.use(cors());
 app.use(express.json());
-
+app.get("/", (req, res) => {
+  res.send("Backend is running 🚀");
+});
 // Request logging middleware
 app.use((req, res, next) => {
   const now = new Date().toISOString();
