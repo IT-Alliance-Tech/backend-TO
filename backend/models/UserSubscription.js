@@ -1,5 +1,7 @@
+// backend/models/UserSubscription.js
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
+const ObjectId = mongoose.Types.ObjectId;
 
 const ViewedPropertySchema = new Schema(
   {
@@ -11,46 +13,33 @@ const ViewedPropertySchema = new Schema(
 
 const UserSubscriptionSchema = new Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true }, // owner of subscription
     subscriptionId: {
       type: Schema.Types.ObjectId,
       ref: "Subscription",
       required: true,
-    },
-    startDate: { type: Date, required: true },
-    endDate: { type: Date, required: true },
-
-    // available starts from subscription.accessibleSlots (number)
-    available: { type: Number, required: true, default: 0 },
-
-    // list of viewed properties to prevent double-view and keep timestamps
-    viewedProperties: { type: [ViewedPropertySchema], default: [] },
-
-    accessDate: { type: Schema.Types.Mixed, default: {} },
-
-    // 'full'|'limited'|'none'
+    }, // plan ref
+    startDate: { type: Date, required: true }, // subscription start
+    endDate: { type: Date, required: true }, // subscription end
+    available: { type: Number, required: true, default: 0 }, // remaining view slots
+    viewedProperties: { type: [ViewedPropertySchema], default: [] }, // recorded property views
+    accessDate: { type: Schema.Types.Mixed, default: {} }, // misc access metadata
     accessLevel: {
       type: String,
       enum: ["full", "limited", "none"],
       default: "full",
-    },
-
-    // active boolean (true if currently active and available > 0)
-    active: { type: Boolean, default: false },
+    }, // access category
+    active: { type: Boolean, default: false }, // whether subscription is active
   },
   { timestamps: true }
 );
 
-/**
- * computeActive: active if within date range and available > 0
- */
+/* Active if within dates and has available slots */
 UserSubscriptionSchema.methods.computeActive = function (asOf = new Date()) {
   return this.startDate <= asOf && asOf <= this.endDate && this.available > 0;
 };
 
-/**
- * computeAccessLevelFromRemaining
- */
+/* Access level from remaining slots */
 UserSubscriptionSchema.statics.computeAccessLevelFromRemaining = function (
   remaining
 ) {
@@ -59,40 +48,62 @@ UserSubscriptionSchema.statics.computeAccessLevelFromRemaining = function (
   return "full";
 };
 
+/* Return number of remaining views */
 UserSubscriptionSchema.methods.getRemainingViews = function () {
   return this.available;
 };
 
+/* Check whether the property has been viewed (safe string/ObjectId compare) */
 UserSubscriptionSchema.methods.hasViewedProperty = function (propertyId) {
+  const pidStr =
+    propertyId && propertyId.toString
+      ? propertyId.toString()
+      : String(propertyId);
   return this.viewedProperties.some(
-    (vp) => vp.propertyId.toString() === propertyId.toString()
+    (vp) => (vp.propertyId || "").toString() === pidStr
   );
 };
 
+/* Convenience validity boolean */
 UserSubscriptionSchema.methods.isValid = function (asOf = new Date()) {
   return this.computeActive(asOf);
 };
 
 /**
  * usePropertyView(propertyId)
- * Atomic: uses findOneAndUpdate with conditions so concurrent calls do not double-decrement.
- * Returns the updated document (with new accessLevel/active) or null on failure.
+ * Atomically decrement a view slot and record viewed property if not seen before.
+ * Uses findOneAndUpdate with safe ObjectId creation to avoid race conditions.
+ * Returns updated document or null on failure (already viewed / no slots / inactive).
  */
 UserSubscriptionSchema.methods.usePropertyView = async function (propertyId) {
   const Model = this.constructor;
 
+  // accept string or ObjectId input; ensure proper ObjectId instance
+  let pid;
+  try {
+    pid =
+      propertyId instanceof mongoose.Types.ObjectId
+        ? propertyId
+        : new ObjectId(String(propertyId));
+  } catch (e) {
+    // invalid id format
+    return null;
+  }
+
+  // atomic query: subscription must be active, have available >=1 and not have this propertyId recorded
   const query = {
     _id: this._id,
     active: true,
     available: { $gte: 1 },
-    "viewedProperties.propertyId": { $ne: mongoose.Types.ObjectId(propertyId) },
+    "viewedProperties.propertyId": { $ne: pid },
   };
 
+  // decrement available and push viewed record atomically
   const update = {
     $inc: { available: -1 },
     $push: {
       viewedProperties: {
-        propertyId: mongoose.Types.ObjectId(propertyId),
+        propertyId: pid,
         viewedAt: new Date(),
       },
     },
@@ -103,17 +114,18 @@ UserSubscriptionSchema.methods.usePropertyView = async function (propertyId) {
   }).exec();
 
   if (!updated) {
-    // failed because either already viewed, no available left, or not active
+    // null when already viewed, inactive, or no slots
     return null;
   }
 
+  // recalc accessLevel and potentially deactivate if no slots left
   const newAccessLevel = Model.computeAccessLevelFromRemaining(
     updated.available
   );
   const sets = { accessLevel: newAccessLevel };
-
   if (updated.available <= 0) sets.active = false;
 
+  // persist accessLevel/active
   const final = await Model.findByIdAndUpdate(
     updated._id,
     { $set: sets },
@@ -122,6 +134,7 @@ UserSubscriptionSchema.methods.usePropertyView = async function (propertyId) {
   return final;
 };
 
+/* Numeric virtual for simple queries */
 UserSubscriptionSchema.virtual("activeNumeric").get(function () {
   return this.active ? 1 : 0;
 });

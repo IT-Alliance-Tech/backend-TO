@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const Schema = mongoose.Schema;
 
 const propertySchema = new Schema({
-  // owner references Owner model (nullable)
+  // owner references Owner and admin can uploade the property details
   owner: { type: Schema.Types.ObjectId, ref: "Owner", default: null },
   ownerName: { type: String, default: null },
   createdByRole: { type: String, enum: ["owner","admin"], default: "owner" },

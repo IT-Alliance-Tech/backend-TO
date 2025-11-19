@@ -1,29 +1,37 @@
+// backend/routes/userSubscriptionRoutes.js
 const express = require("express");
 const router = express.Router();
+const auth = require("../middlewares/auth");
 const ctrl = require("../controllers/userSubscriptionController");
 
-// core CRUD
-router.post("/", ctrl.create);
-router.get("/", ctrl.list);
-router.get("/:id", ctrl.get);
-router.put("/:id", ctrl.update);
-router.delete("/:id", ctrl.remove);
+// Create a user subscription manually
+router.post("/", auth, ctrl.create);
 
-// convenience
-router.get("/user/:userId/active", ctrl.getActiveForUser);
+// Get all user subscriptions
+router.get("/", auth, ctrl.list);
 
-// use-view
-router.post("/:id/use-view", ctrl.useView);
+// Get user subscription by ID
+router.get("/:id", auth, ctrl.get);
 
-// subscribe, end, upgrade
-router.post("/subscribe", ctrl.subscribe);
-router.post("/", ctrl.create);
-router.get("/", ctrl.list);
-router.get("/active/:userId", ctrl.getActiveForUser);
-router.get("/:id", ctrl.get);
-router.put("/:id", ctrl.update);
-router.delete("/:id", ctrl.remove);
-router.put("/:id/end", ctrl.endSubscription);
-router.put("/:id/upgrade", ctrl.upgradeSubscription);
+// Get active subscription(s) for a user
+router.get("/active/:userId", auth, ctrl.getActiveForUser);
+
+// Subscribe a user to a plan
+router.post("/subscribe", auth, ctrl.subscribe);
+
+// Use one view slot for a subscription
+router.post("/:id/use-view", auth, ctrl.useView);
+
+// Update user subscription details
+router.put("/:id", auth, ctrl.update);
+
+// Upgrade user subscription plan
+router.put("/:id/upgrade", auth, ctrl.upgradeSubscription);
+
+// End a user's subscription
+router.put("/:id/end", auth, ctrl.endSubscription);
+
+// Delete a user subscription
+router.delete("/:id", auth, ctrl.remove);
 
 module.exports = router;
