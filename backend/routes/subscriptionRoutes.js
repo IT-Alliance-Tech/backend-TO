@@ -1,28 +1,21 @@
-// routes/userSubscriptions.js
+// backend/routes/subscriptionRoutes.js
 const express = require("express");
 const router = express.Router();
-const ctrl = require("../controllers/userSubscriptionController");
+const ctrl = require("../controllers/subscriptionController");
 
-// quick health check (temporary; remove later)
-router.get("/_ping", (req, res) =>
-  res.json({ ok: true, msg: "user-subscriptions router alive" })
-);
-
-// Specific/convenience routes FIRST (no param collisions)
-router.post("/subscribe", ctrl.subscribe);
-router.get("/user/:userId/active", ctrl.getActiveForUser);
-router.get("/active/:userId", ctrl.getActiveForUser);
-
-// Actions tied to a specific user-subscription (use-view, end, upgrade)
-router.post("/:id/use-view", ctrl.useView);
-router.put("/:id/end", ctrl.endSubscription);
-router.put("/:id/upgrade", ctrl.upgradeSubscription);
-
-// Core CRUD LAST (so /:id doesn't shadow other routes)
+// Create a subscription plan (admin)
 router.post("/", ctrl.create);
+
+// List subscription plans (public)
 router.get("/", ctrl.list);
+
+// Get a single subscription plan
 router.get("/:id", ctrl.get);
+
+// Update a subscription plan (admin)
 router.put("/:id", ctrl.update);
+
+// Delete a subscription plan (admin)
 router.delete("/:id", ctrl.remove);
 
 module.exports = router;
