@@ -4,10 +4,7 @@ const UserSubscription = require("../models/UserSubscription");
 const { ROLES, BOOKING_STATUS } = require("../utils/constants");
 
 /**
- * Create a booking (User only).
- * Requirement: user must have an active subscription in UserSubscription
- * If not subscribed -> respond with message: " please subscribe the plan"
- */
+ * Create a booking (User only). */
 exports.createBooking = async (req, res) => {
   try {
     // 1) role check
