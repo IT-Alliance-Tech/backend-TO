@@ -23,3 +23,4 @@ router.get('/properties', adminController.getAllPropertiesForAdmin);
 router.get('/bookings', adminController.getAllBookings);
 
 module.exports = router;
+// routes/adminRoutes.js
