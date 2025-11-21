@@ -1,3 +1,6 @@
+// controllers/userSubscriptionController.js
+// One-line: user subscription logic with T&C acceptance added
+
 const mongoose = require("mongoose");
 const UserSubscription = require("../models/UserSubscription");
 const User = require("../models/User");
@@ -112,7 +115,7 @@ exports.get = async (req, res) => {
   }
 };
 
-/* Update a user-subscription (dates, available, viewedProperties, active) */
+/* Update a user-subscription */
 exports.update = async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -165,7 +168,7 @@ exports.update = async (req, res) => {
   }
 };
 
-/* Delete a user-subscription and clear user's current subscription if needed */
+/* Delete a user-subscription */
 exports.remove = async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -195,7 +198,7 @@ exports.remove = async (req, res) => {
   }
 };
 
-/* Get active subscriptions for a user (based on start/end dates) */
+/* Get active subscriptions for a user */
 exports.getActiveForUser = async (req, res) => {
   try {
     const userId = req.params.userId;
@@ -214,7 +217,7 @@ exports.getActiveForUser = async (req, res) => {
   }
 };
 
-/* Consume one view slot for a subscription (records property view) */
+/* Consume one view slot for a subscription */
 exports.useView = async (req, res) => {
   try {
     const id = req.params.id;
@@ -255,7 +258,7 @@ exports.useView = async (req, res) => {
   }
 };
 
-/* Subscribe a user to a plan (atomic) - blocks subscribing to same active plan */
+/* Subscribe a user to a plan (T&C required) */
 exports.subscribe = async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -267,9 +270,14 @@ exports.subscribe = async (req, res) => {
         subscriptionId,
         startDate,
         endDate: clientEndDate,
+        tncAccepted, // one-line: must be true
       } = req.body;
+
       if (!userId || !subscriptionId)
         throw new Error("userId and subscriptionId are required");
+
+      if (tncAccepted !== true)
+        throw new Error("You must accept Terms & Conditions to subscribe");
 
       const [user, plan] = await Promise.all([
         User.findById(userId).session(session),
@@ -278,22 +286,22 @@ exports.subscribe = async (req, res) => {
       if (!user) throw new Error("User not found");
       if (!plan) throw new Error("Subscription plan not found");
 
-      // Prevent subscribing to the same plan if user already has an active subscription of that plan
       const now = new Date();
-      const existingSame = await UserSubscription.findOne({
+
+      const existingActive = await UserSubscription.findOne({
         userId: user._id,
-        subscriptionId: plan._id,
         active: true,
         startDate: { $lte: now },
         endDate: { $gte: now },
       }).session(session);
-      if (existingSame)
+      if (existingActive)
         throw new Error(
-          "User already has an active subscription for this plan"
+          "You already have an active subscription. Cannot purchase or upgrade until it ends."
         );
 
       const start = startDate ? new Date(startDate) : new Date();
       let end;
+
       if (clientEndDate) {
         end = new Date(clientEndDate);
       } else if (
@@ -310,6 +318,7 @@ exports.subscribe = async (req, res) => {
           ? plan.accessibleSlots
           : plan.features?.views ?? 0;
 
+      // one-line: create subscription with T&C flags
       const us = new UserSubscription({
         userId: user._id,
         subscriptionId: plan._id,
@@ -321,6 +330,20 @@ exports.subscribe = async (req, res) => {
           UserSubscription.computeAccessLevelFromRemaining(startingAvailable),
         active:
           start <= new Date() && new Date() <= end && startingAvailable > 0,
+
+        // top-level T&C fields
+        tncAccepted: true,
+        tncAcceptedAt: new Date(),
+        tncAcceptedIp: req.ip || null,
+        tncAcceptedUserAgent: req.get("User-Agent") || null,
+
+        // also store inside accessDate
+        accessDate: {
+          tncAccepted: true,
+          tncAcceptedAt: new Date(),
+          tncIp: req.ip || null,
+          tncUserAgent: req.get("User-Agent") || null,
+        },
       });
 
       await us.save({ session });
@@ -349,7 +372,7 @@ exports.subscribe = async (req, res) => {
   }
 };
 
-/* End a subscription immediately and clear user's current subscription if it was active */
+/* End subscription immediately */
 exports.endSubscription = async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -394,7 +417,7 @@ exports.endSubscription = async (req, res) => {
   }
 };
 
-/* Upgrade a user's subscription to a new plan (adds remaining slots and remaining days) */
+/* Upgrade subscription */
 exports.upgradeSubscription = async (req, res) => {
   const session = await mongoose.startSession();
   try {
@@ -412,7 +435,13 @@ exports.upgradeSubscription = async (req, res) => {
       if (!us) throw new Error("UserSubscription not found");
       if (!newPlan) throw new Error("New subscription plan not found");
 
-      // Prevent upgrading to the same plan
+      const now = new Date();
+      if (us.active && us.startDate <= now && now <= us.endDate) {
+        throw new Error(
+          "Cannot upgrade an active subscription. Please wait until your current subscription ends."
+        );
+      }
+
       if (us.subscriptionId.toString() === newPlan._id.toString())
         throw new Error("Already on this subscription plan");
 
@@ -421,8 +450,6 @@ exports.upgradeSubscription = async (req, res) => {
           ? newPlan.accessibleSlots
           : newPlan.features?.views ?? 0;
 
-      // compute remaining days on existing plan (only if endDate in future)
-      const now = new Date();
       let remainingDaysOld = 0;
       if (us.endDate && us.endDate > now) {
         remainingDaysOld = Math.ceil(
@@ -430,12 +457,10 @@ exports.upgradeSubscription = async (req, res) => {
         );
       }
 
-      // resulting available slots: optionally inherit existing remaining slots
       const resultingAvailable = inheritRemaining
         ? Number(us.available || 0) + Number(newPlanSlots)
         : Number(newPlanSlots);
 
-      // resulting end date = now + newPlan.durationDays + remainingDaysOld
       const durationDays =
         typeof newPlan.durationDays === "number" && newPlan.durationDays > 0
           ? newPlan.durationDays

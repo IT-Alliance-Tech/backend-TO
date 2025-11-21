@@ -1,17 +1,19 @@
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
-module.exports = function (req, res, next) {
-  const token = req.header("Authorization");
-
-  if (!token) {
-    return res.status(401).json({ message: "Access denied. No token provided." });
-  }
+module.exports = async function (req, res, next) {
+  const authHeader = req.header("Authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return next(); // guest allowed
 
   try {
-    const decoded = jwt.verify(token.replace("Bearer ", ""), process.env.JWT_SECRET);
-    req.user = decoded.user; // Attach user payload to request
-    next(); // Proceed to the next middleware or route handler
+    const token = authHeader.replace("Bearer ", "");
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.user._id || decoded.user.id)
+      .select("-password")
+      .lean();
+    req.user = user;
+    next();
   } catch (err) {
-    res.status(401).json({ message: "Invalid token." });
+    return next(); // treat invalid token as guest
   }
 };
