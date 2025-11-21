@@ -1,14 +1,9 @@
-const { ROLES } = require('../utils/constants');
+const { ROLES } = require("../utils/constants");
 
 const checkRole = (roles) => {
   return (req, res, next) => {
-    console.log(req.user);
-    
-    console.log(req.user.role, roles);
-    
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).send({ error: 'Access denied.' });
-    }
+    if (!req.user) return res.status(401).send({ error: "Login required" });
+    if (!roles.includes(req.user.role)) return res.status(403).send({ error: "Access denied" });
     next();
   };
 };
@@ -16,5 +11,5 @@ const checkRole = (roles) => {
 module.exports = {
   userAuth: checkRole([ROLES.USER]),
   ownerAuth: checkRole([ROLES.OWNER]),
-  adminAuth: checkRole([ROLES.ADMIN])
+  adminAuth: checkRole([ROLES.ADMIN]),
 };

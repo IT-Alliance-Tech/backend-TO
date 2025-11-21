@@ -1,4 +1,5 @@
 // backend/models/UserSubscription.js
+// CHANGED: file inspected — schema preserved (no changes needed)
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
 const ObjectId = mongoose.Types.ObjectId;
