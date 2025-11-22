@@ -55,6 +55,8 @@ app.use("/api/booking", bookingRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/user-subscriptions", userSubscriptionRoutes);
 app.use("/api/properties", propertyRoutes);
+app.use("/api/user", userRoutes);
+
 // Global error handler
 app.use((err, req, res, next) => {
   const now = new Date().toISOString();
@@ -81,5 +83,6 @@ app.use("*", (req, res) => {
   console.log(`${"=".repeat(60)}\n`);
   res.status(404).json({ error: "Route not found" });
 });
+
 
 module.exports = app;
