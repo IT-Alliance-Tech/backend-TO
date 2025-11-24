@@ -6,10 +6,10 @@ const { userAuth } = require("../middlewares/roleCheck");
 const userController = require("../controllers/userController");
 const propertyController = require('../controllers/propertyController');
 
-// --------- PUBLIC ROUTES ---------
-router.get("/properties", userController.getAllProperties);
 
-// --------- PROTECTED ROUTES ---------
+router.get("/properties", auth, propertyController.getUserProperties);
+
+// PROTECTED ROUTES (Auth + User Role Required)
 router.use(auth);
 router.use(userAuth);
 
@@ -27,6 +27,5 @@ router.get("/bookings", userController.getUserBookings);
 
 // Payment routes
 router.post("/unlock-contact", userController.unlockOwnerContact);
-
 
 module.exports = router;
