@@ -1,10 +1,9 @@
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const connectDB = require("./config/db");
 
 const authRoutes = require("./routes/authRoutes");
-const userRoutes = require("./routes/userRoutes");
+const userRoutes = require("./routes/userRoutes"); 
 const ownerRoutes = require("./routes/ownerRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
@@ -16,15 +15,14 @@ const propertyRoutes = require("./routes/propertyRoutes");
 
 const app = express();
 
-// Connect to database
-connectDB();
-
 // Core middlewares
 app.use(cors());
 app.use(express.json());
+
 app.get("/", (req, res) => {
-  res.send("Backend is running 🚀");
+  res.send("Backend is running 🚀");
 });
+
 // Request logging middleware
 app.use((req, res, next) => {
   const now = new Date().toISOString();
@@ -47,7 +45,7 @@ app.use((req, res, next) => {
 // Route mounts
 app.use("/api", commonRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/user", userRoutes);
+app.use("/api/user", userRoutes); 
 app.use("/api/owner", ownerRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/payment", paymentRoutes);
@@ -55,6 +53,7 @@ app.use("/api/booking", bookingRoutes);
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/user-subscriptions", userSubscriptionRoutes);
 app.use("/api/properties", propertyRoutes);
+
 // Global error handler
 app.use((err, req, res, next) => {
   const now = new Date().toISOString();

@@ -1,47 +1,79 @@
-const User = require('../models/User');
-const OTP = require('../models/OTP');
-const Owner = require('../models/Owner');
-const jwt = require('jsonwebtoken');
-const { sendOTPEmail } = require('../services/emailService');
-const { generateAndSaveOTP, verifyOTP } = require('../services/otpService');
-const { validateEmail } = require('../utils/helpers');
-const { ROLES } = require('../utils/constants');
+const User = require("../models/User");
+const OTP = require("../models/OTP");
+const Owner = require("../models/Owner");
+const jwt = require("jsonwebtoken");
+const { sendOTPEmail } = require("../services/emailService");
+const { generateAndSaveOTP, verifyOTP } = require("../services/otpService");
+const { validateEmail } = require("../utils/helpers");
+const { ROLES } = require("../utils/constants");
 
-// Generate JWT Token
+// Generate JWT Token - FIXED: Now consistent
 const generateToken = async (user) => {
-  return jwt.sign({ user }, process.env.JWT_SECRET, { expiresIn: '30d' });
+  // Store only necessary user data in token
+  const payload = {
+    user: {
+      _id: user._id,
+      email: user.email,
+      role: user.role,
+      verified: user.verified,
+    },
+  };
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
 // Register user
 const register = async (req, res) => {
-  const { firstName, lastName, name, email, password, phone, role, idProofNumber, idProofType, idProofImageUrl } = req.body;
+  const {
+    firstName,
+    lastName,
+    name,
+    email,
+    password,
+    phone,
+    role,
+    idProofNumber,
+    idProofType,
+    idProofImageUrl,
+  } = req.body;
 
   try {
     if (!validateEmail(email)) {
-      return res.status(400).json({ success: false, error: { message: 'Invalid email format' }, data: null });
+      return res.status(400).json({
+        success: false,
+        error: { message: "Invalid email format" },
+        data: null,
+      });
     }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(400).json({ success: false, error: { message: 'Email already in use' }, data: null });
+      return res.status(400).json({
+        success: false,
+        error: { message: "Email already in use" },
+        data: null,
+      });
     }
 
     // Validate ID proof for owner
     if (role === ROLES.OWNER) {
       if (!idProofNumber || !idProofType || !idProofImageUrl) {
-        return res.status(400).json({ success: false, error: { message: 'Owner registration requires ID proof details' }, data: null });
+        return res.status(400).json({
+          success: false,
+          error: { message: "Owner registration requires ID proof details" },
+          data: null,
+        });
       }
     }
 
     const user = new User({
       firstName,
       lastName,
-      name: name || `${firstName || ''} ${lastName || ''}`.trim(),
+      name: name || `${firstName || ""} ${lastName || ""}`.trim(),
       email,
       phone,
       password,
       role: role || ROLES.USER,
-      verified: false
+      verified: false,
     });
 
     await user.save();
@@ -54,7 +86,7 @@ const register = async (req, res) => {
         idProofType,
         idProofImageUrl,
         properties: [],
-        verified: false
+        verified: false,
       });
       await owner.save();
     }
@@ -67,7 +99,8 @@ const register = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: 'User registered successfully. Please verify your email with OTP.',
+        message:
+          "User registered successfully. Please verify your email with OTP.",
         user: {
           id: user._id,
           email: user.email,
@@ -76,13 +109,17 @@ const register = async (req, res) => {
           firstName: user.firstName,
           lastName: user.lastName,
           role: user.role,
-          isVerified: user.verified
-        }
-      }
+          isVerified: user.verified,
+        },
+      },
     });
   } catch (error) {
-    console.error('Register error:', error);
-    res.status(500).json({ success: false, error: { message: 'Internal server error', details: error.message }, data: null });
+    console.error("Register error:", error);
+    res.status(500).json({
+      success: false,
+      error: { message: "Internal server error", details: error.message },
+      data: null,
+    });
   }
 };
 
@@ -96,8 +133,8 @@ const updateUser = async (req, res) => {
     if (id && id !== userId.toString()) {
       return res.status(403).json({
         success: false,
-        error: { message: 'You are not authorized to update this user' },
-        data: null
+        error: { message: "You are not authorized to update this user" },
+        data: null,
       });
     }
 
@@ -108,13 +145,15 @@ const updateUser = async (req, res) => {
     if (phone) updateData.phone = phone;
     if (password) updateData.password = password; // will be hashed by pre-save hook
 
-    const updatedUser = await User.findByIdAndUpdate(userId, updateData, { new: true });
+    const updatedUser = await User.findByIdAndUpdate(userId, updateData, {
+      new: true,
+    });
 
     if (!updatedUser) {
       return res.status(404).json({
         success: false,
-        error: { message: 'User not found' },
-        data: null
+        error: { message: "User not found" },
+        data: null,
       });
     }
 
@@ -122,7 +161,7 @@ const updateUser = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: 'User updated successfully',
+        message: "User updated successfully",
         user: {
           id: updatedUser._id,
           email: updatedUser.email,
@@ -131,20 +170,19 @@ const updateUser = async (req, res) => {
           firstName: updatedUser.firstName,
           lastName: updatedUser.lastName,
           role: updatedUser.role,
-          isVerified: updatedUser.verified
-        }
-      }
+          isVerified: updatedUser.verified,
+        },
+      },
     });
   } catch (error) {
-    console.error('Update user error:', error);
+    console.error("Update user error:", error);
     res.status(500).json({
       success: false,
-      error: { message: 'Internal server error', details: error.message },
-      data: null
+      error: { message: "Internal server error", details: error.message },
+      data: null,
     });
   }
 };
-
 
 // Validate OTP after registration
 const validateOTP = async (req, res) => {
@@ -158,9 +196,9 @@ const validateOTP = async (req, res) => {
         statusCode: 400,
         success: false,
         error: {
-          message: 'Invalid or expired OTP'
+          message: "Invalid or expired OTP",
         },
-        data: null
+        data: null,
       });
     }
 
@@ -176,9 +214,9 @@ const validateOTP = async (req, res) => {
         statusCode: 404,
         success: false,
         error: {
-          message: 'User not found'
+          message: "User not found",
         },
-        data: null
+        data: null,
       });
     }
 
@@ -190,27 +228,27 @@ const validateOTP = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: 'Email verified successfully',
+        message: "Email verified successfully",
         token,
         user: {
           id: user._id,
           email: user.email,
           isVerified: user.verified,
           name: user.name,
-          role: user.role
-        }
-      }
+          role: user.role,
+        },
+      },
     });
   } catch (error) {
-    console.error('Verify OTP error:', error);
+    console.error("Verify OTP error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
@@ -226,9 +264,9 @@ const loginWithPassword = async (req, res) => {
         statusCode: 400,
         success: false,
         error: {
-          message: 'Invalid credentials'
+          message: "Invalid credentials",
         },
-        data: null
+        data: null,
       });
     }
 
@@ -238,15 +276,15 @@ const loginWithPassword = async (req, res) => {
         statusCode: 403,
         success: false,
         error: {
-          message: 'Email not verified'
+          message: "Email not verified",
         },
         data: {
           user: {
             id: user._id,
             email: user.email,
-            isVerified: user.verified
-          }
-        }
+            isVerified: user.verified,
+          },
+        },
       });
     }
 
@@ -256,45 +294,45 @@ const loginWithPassword = async (req, res) => {
         statusCode: 400,
         success: false,
         error: {
-          message: 'Invalid credentials'
+          message: "Invalid credentials",
         },
-        data: null
+        data: null,
       });
     }
 
     const token = await generateToken(user);
-    
+
     res.status(200).json({
       statusCode: 200,
       success: true,
       error: null,
       data: {
-        message: 'Login successful',
+        message: "Login successful",
         token,
         user: {
           id: user._id,
           email: user.email,
           name: user.name,
           role: user.role,
-          isVerified: user.verified
-        }
-      }
+          isVerified: user.verified,
+        },
+      },
     });
   } catch (error) {
-    console.error('Login with password error:', error);
+    console.error("Login with password error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
 
-// Login with OTP
+// Login with OTP - FIXED: Pass user object instead of just ID
 const loginWithOTP = async (req, res) => {
   const { email, otp } = req.body;
 
@@ -305,9 +343,9 @@ const loginWithOTP = async (req, res) => {
         statusCode: 400,
         success: false,
         error: {
-          message: 'User not found'
+          message: "User not found",
         },
-        data: null
+        data: null,
       });
     }
 
@@ -317,15 +355,15 @@ const loginWithOTP = async (req, res) => {
         statusCode: 403,
         success: false,
         error: {
-          message: 'Email not verified'
+          message: "Email not verified",
         },
         data: {
           user: {
             id: user._id,
             email: user.email,
-            isVerified: user.verified
-          }
-        }
+            isVerified: user.verified,
+          },
+        },
       });
     }
 
@@ -335,40 +373,41 @@ const loginWithOTP = async (req, res) => {
         statusCode: 400,
         success: false,
         error: {
-          message: 'Invalid or expired OTP'
+          message: "Invalid or expired OTP",
         },
-        data: null
+        data: null,
       });
     }
 
-    const token = await generateToken(user._id);
-    
+    // FIXED: Pass full user object, not just ID
+    const token = await generateToken(user);
+
     res.status(200).json({
       statusCode: 200,
       success: true,
       error: null,
       data: {
-        message: 'Login successful',
+        message: "Login successful",
         token,
         user: {
           id: user._id,
           email: user.email,
           name: user.name,
           role: user.role,
-          isVerified: user.verified
-        }
-      }
+          isVerified: user.verified,
+        },
+      },
     });
   } catch (error) {
-    console.error('Login with OTP error:', error);
+    console.error("Login with OTP error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
@@ -384,9 +423,9 @@ const sendOTP = async (req, res) => {
         statusCode: 400,
         success: false,
         error: {
-          message: 'User not found'
+          message: "User not found",
         },
-        data: null
+        data: null,
       });
     }
 
@@ -398,24 +437,24 @@ const sendOTP = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: 'OTP sent successfully',
+        message: "OTP sent successfully",
         user: {
           id: user._id,
           email: user.email,
-          isVerified: user.verified
-        }
-      }
+          isVerified: user.verified,
+        },
+      },
     });
   } catch (error) {
-    console.error('Send OTP error:', error);
+    console.error("Send OTP error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
@@ -430,8 +469,8 @@ const forgotPasswordRequest = async (req, res) => {
       return res.status(404).json({
         statusCode: 404,
         success: false,
-        error: { message: 'User not found' },
-        data: null
+        error: { message: "User not found" },
+        data: null,
       });
     }
 
@@ -442,15 +481,15 @@ const forgotPasswordRequest = async (req, res) => {
       statusCode: 200,
       success: true,
       error: null,
-      data: { message: 'Password reset OTP sent successfully' }
+      data: { message: "Password reset OTP sent successfully" },
     });
   } catch (error) {
-    console.error('Forgot password request error:', error);
+    console.error("Forgot password request error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
-      error: { message: 'Internal server error', details: error.message },
-      data: null
+      error: { message: "Internal server error", details: error.message },
+      data: null,
     });
   }
 };
@@ -465,8 +504,8 @@ const verifyForgotPasswordOTP = async (req, res) => {
       return res.status(404).json({
         statusCode: 404,
         success: false,
-        error: { message: 'User not found' },
-        data: null
+        error: { message: "User not found" },
+        data: null,
       });
     }
 
@@ -475,8 +514,8 @@ const verifyForgotPasswordOTP = async (req, res) => {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: { message: 'Invalid or expired OTP' },
-        data: null
+        error: { message: "Invalid or expired OTP" },
+        data: null,
       });
     }
 
@@ -484,15 +523,15 @@ const verifyForgotPasswordOTP = async (req, res) => {
       statusCode: 200,
       success: true,
       error: null,
-      data: { message: 'OTP verified successfully' }
+      data: { message: "OTP verified successfully" },
     });
   } catch (error) {
-    console.error('Verify forgot password OTP error:', error);
+    console.error("Verify forgot password OTP error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
-      error: { message: 'Internal server error', details: error.message },
-      data: null
+      error: { message: "Internal server error", details: error.message },
+      data: null,
     });
   }
 };
@@ -507,8 +546,8 @@ const resetPassword = async (req, res) => {
       return res.status(404).json({
         statusCode: 404,
         success: false,
-        error: { message: 'User not found' },
-        data: null
+        error: { message: "User not found" },
+        data: null,
       });
     }
 
@@ -517,8 +556,8 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: { message: 'Invalid or expired OTP' },
-        data: null
+        error: { message: "Invalid or expired OTP" },
+        data: null,
       });
     }
 
@@ -529,15 +568,15 @@ const resetPassword = async (req, res) => {
       statusCode: 200,
       success: true,
       error: null,
-      data: { message: 'Password reset successfully' }
+      data: { message: "Password reset successfully" },
     });
   } catch (error) {
-    console.error('Reset password error:', error);
+    console.error("Reset password error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
-      error: { message: 'Internal server error', details: error.message },
-      data: null
+      error: { message: "Internal server error", details: error.message },
+      data: null,
     });
   }
 };
@@ -552,8 +591,8 @@ const deleteUser = async (req, res) => {
     if (requesterRole !== ROLES.ADMIN) {
       return res.status(403).json({
         success: false,
-        error: { message: 'Access denied. Only admins can delete users.' },
-        data: null
+        error: { message: "Access denied. Only admins can delete users." },
+        data: null,
       });
     }
 
@@ -563,28 +602,25 @@ const deleteUser = async (req, res) => {
     if (!deletedUser) {
       return res.status(404).json({
         success: false,
-        error: { message: 'User not found' },
-        data: null
+        error: { message: "User not found" },
+        data: null,
       });
     }
 
     res.status(200).json({
       success: true,
       error: null,
-      data: { message: 'User deleted successfully', deletedUserId: userId }
+      data: { message: "User deleted successfully", deletedUserId: userId },
     });
   } catch (error) {
-    console.error('Delete user error:', error);
+    console.error("Delete user error:", error);
     res.status(500).json({
       success: false,
-      error: { message: 'Internal server error', details: error.message },
-      data: null
+      error: { message: "Internal server error", details: error.message },
+      data: null,
     });
   }
 };
-
-
-
 
 module.exports = {
   register,
@@ -596,5 +632,5 @@ module.exports = {
   verifyForgotPasswordOTP,
   resetPassword,
   updateUser,
-  deleteUser
+  deleteUser,
 };
