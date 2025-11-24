@@ -7,9 +7,13 @@ const { generateAndSaveOTP, verifyOTP } = require("../services/otpService");
 const { validateEmail } = require("../utils/helpers");
 const { ROLES } = require("../utils/constants");
 
-// Generate JWT Token - FIXED: Now consistent
+// Generate JWT Token with validation
 const generateToken = async (user) => {
-  // Store only necessary user data in token
+  // Validate JWT_SECRET exists
+  if (!process.env.JWT_SECRET) {
+    throw new Error("JWT_SECRET is not configured on server");
+  }
+
   const payload = {
     user: {
       _id: user._id,
@@ -18,10 +22,11 @@ const generateToken = async (user) => {
       verified: user.verified,
     },
   };
+
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
-// Register user
+// Register user - FIXED: Non-blocking email
 const register = async (req, res) => {
   const {
     firstName,
@@ -91,10 +96,12 @@ const register = async (req, res) => {
       await owner.save();
     }
 
-    // Generate and send OTP
-    const otp = await generateAndSaveOTP(email);
-    await sendOTPEmail(email, otp);
+    // ✅ FIXED: Send email asynchronously (don't wait for it)
+    generateAndSaveOTP(email)
+      .then((otp) => sendOTPEmail(email, otp))
+      .catch((err) => console.error("Failed to send OTP email:", err));
 
+    // Respond immediately without waiting for email
     res.status(201).json({
       success: true,
       error: null,
@@ -125,11 +132,10 @@ const register = async (req, res) => {
 
 // Update User
 const updateUser = async (req, res) => {
-  const userId = req.user._id; // from auth middleware
+  const userId = req.user._id;
   const { id, firstName, lastName, name, phone, password } = req.body;
 
   try {
-    // ✅ Check if the request is trying to update the same logged-in user
     if (id && id !== userId.toString()) {
       return res.status(403).json({
         success: false,
@@ -143,7 +149,7 @@ const updateUser = async (req, res) => {
     if (lastName) updateData.lastName = lastName;
     if (name) updateData.name = name;
     if (phone) updateData.phone = phone;
-    if (password) updateData.password = password; // will be hashed by pre-save hook
+    if (password) updateData.password = password;
 
     const updatedUser = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
@@ -189,20 +195,16 @@ const validateOTP = async (req, res) => {
   const { email, otp } = req.body;
 
   try {
-    // Verify OTP
     const isValidOTP = await verifyOTP(email, otp);
     if (!isValidOTP) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: {
-          message: "Invalid or expired OTP",
-        },
+        error: { message: "Invalid or expired OTP" },
         data: null,
       });
     }
 
-    // Find and update user
     const user = await User.findOneAndUpdate(
       { email },
       { verified: true },
@@ -213,14 +215,11 @@ const validateOTP = async (req, res) => {
       return res.status(404).json({
         statusCode: 404,
         success: false,
-        error: {
-          message: "User not found",
-        },
+        error: { message: "User not found" },
         data: null,
       });
     }
 
-    // Generate token after verification
     const token = await generateToken(user);
 
     res.status(200).json({
@@ -244,40 +243,42 @@ const validateOTP = async (req, res) => {
     res.status(500).json({
       statusCode: 500,
       success: false,
-      error: {
-        message: "Internal server error",
-        details: error.message,
-      },
+      error: { message: "Internal server error", details: error.message },
       data: null,
     });
   }
 };
 
-// Login with password
+// Login with password - FIXED: Better error handling
 const loginWithPassword = async (req, res) => {
   const { email, password } = req.body;
 
   try {
+    if (!process.env.JWT_SECRET) {
+      console.error("CRITICAL: JWT_SECRET not set!");
+      return res.status(500).json({
+        statusCode: 500,
+        success: false,
+        error: { message: "Server configuration error" },
+        data: null,
+      });
+    }
+
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: {
-          message: "Invalid credentials",
-        },
+        error: { message: "Invalid credentials" },
         data: null,
       });
     }
 
-    // Check if user is verified
     if (!user.verified) {
       return res.status(403).json({
         statusCode: 403,
         success: false,
-        error: {
-          message: "Email not verified",
-        },
+        error: { message: "Email not verified" },
         data: {
           user: {
             id: user._id,
@@ -293,9 +294,7 @@ const loginWithPassword = async (req, res) => {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: {
-          message: "Invalid credentials",
-        },
+        error: { message: "Invalid credentials" },
         data: null,
       });
     }
@@ -323,40 +322,42 @@ const loginWithPassword = async (req, res) => {
     res.status(500).json({
       statusCode: 500,
       success: false,
-      error: {
-        message: "Internal server error",
-        details: error.message,
-      },
+      error: { message: "Internal server error", details: error.message },
       data: null,
     });
   }
 };
 
-// Login with OTP - FIXED: Pass user object instead of just ID
+// Login with OTP - FIXED: Better error handling
 const loginWithOTP = async (req, res) => {
   const { email, otp } = req.body;
 
   try {
+    if (!process.env.JWT_SECRET) {
+      console.error("CRITICAL: JWT_SECRET not set!");
+      return res.status(500).json({
+        statusCode: 500,
+        success: false,
+        error: { message: "Server configuration error" },
+        data: null,
+      });
+    }
+
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: {
-          message: "User not found",
-        },
+        error: { message: "User not found" },
         data: null,
       });
     }
 
-    // Check if user is verified
     if (!user.verified) {
       return res.status(403).json({
         statusCode: 403,
         success: false,
-        error: {
-          message: "Email not verified",
-        },
+        error: { message: "Email not verified" },
         data: {
           user: {
             id: user._id,
@@ -372,14 +373,11 @@ const loginWithOTP = async (req, res) => {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: {
-          message: "Invalid or expired OTP",
-        },
+        error: { message: "Invalid or expired OTP" },
         data: null,
       });
     }
 
-    // FIXED: Pass full user object, not just ID
     const token = await generateToken(user);
 
     res.status(200).json({
@@ -403,16 +401,13 @@ const loginWithOTP = async (req, res) => {
     res.status(500).json({
       statusCode: 500,
       success: false,
-      error: {
-        message: "Internal server error",
-        details: error.message,
-      },
+      error: { message: "Internal server error", details: error.message },
       data: null,
     });
   }
 };
 
-// Send OTP
+// Send OTP - FIXED: Non-blocking
 const sendOTP = async (req, res) => {
   const { email } = req.body;
 
@@ -422,16 +417,17 @@ const sendOTP = async (req, res) => {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: {
-          message: "User not found",
-        },
+        error: { message: "User not found" },
         data: null,
       });
     }
 
-    const otp = await generateAndSaveOTP(email);
-    await sendOTPEmail(email, otp);
+    // ✅ Send email asynchronously
+    generateAndSaveOTP(email)
+      .then((otp) => sendOTPEmail(email, otp))
+      .catch((err) => console.error("Failed to send OTP email:", err));
 
+    // Respond immediately
     res.status(200).json({
       statusCode: 200,
       success: true,
@@ -450,16 +446,13 @@ const sendOTP = async (req, res) => {
     res.status(500).json({
       statusCode: 500,
       success: false,
-      error: {
-        message: "Internal server error",
-        details: error.message,
-      },
+      error: { message: "Internal server error", details: error.message },
       data: null,
     });
   }
 };
 
-// Step 1: Request password reset OTP
+// Forgot Password Request - FIXED: Non-blocking
 const forgotPasswordRequest = async (req, res) => {
   const { email } = req.body;
 
@@ -474,8 +467,10 @@ const forgotPasswordRequest = async (req, res) => {
       });
     }
 
-    const otp = await generateAndSaveOTP(email);
-    await sendOTPEmail(email, otp);
+    // ✅ Send email asynchronously
+    generateAndSaveOTP(email)
+      .then((otp) => sendOTPEmail(email, otp))
+      .catch((err) => console.error("Failed to send OTP email:", err));
 
     res.status(200).json({
       statusCode: 200,
@@ -494,7 +489,7 @@ const forgotPasswordRequest = async (req, res) => {
   }
 };
 
-// Step 2: Verify OTP for password reset
+// Verify Forgot Password OTP
 const verifyForgotPasswordOTP = async (req, res) => {
   const { email, otp } = req.body;
 
@@ -536,7 +531,7 @@ const verifyForgotPasswordOTP = async (req, res) => {
   }
 };
 
-// Step 3: Reset password using OTP
+// Reset Password
 const resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
 
@@ -561,7 +556,7 @@ const resetPassword = async (req, res) => {
       });
     }
 
-    user.password = newPassword; // will be hashed by pre-save hook
+    user.password = newPassword;
     await user.save();
 
     res.status(200).json({
@@ -583,11 +578,10 @@ const resetPassword = async (req, res) => {
 
 // Delete User
 const deleteUser = async (req, res) => {
-  const requesterRole = req.user.role; // role comes from auth middleware
-  const { userId } = req.body; // admin specifies which user to delete
+  const requesterRole = req.user.role;
+  const { userId } = req.body;
 
   try {
-    // Check if the logged-in user is admin
     if (requesterRole !== ROLES.ADMIN) {
       return res.status(403).json({
         success: false,
@@ -596,7 +590,6 @@ const deleteUser = async (req, res) => {
       });
     }
 
-    // Delete target user
     const deletedUser = await User.findByIdAndDelete(userId);
 
     if (!deletedUser) {
