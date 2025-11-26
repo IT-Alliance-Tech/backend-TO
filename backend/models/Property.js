@@ -35,19 +35,36 @@ const propertySchema = new Schema(
       required: [true, "Property description is required"],
       trim: true,
     },
-
     location: {
-      address: { type: String, required: true, trim: true },
-      city: { type: String, required: true, trim: true, index: true },
-      state: { type: String, required: true, trim: true, index: true },
-      country: { type: String, required: true, trim: true },
-      pincode: { type: String, trim: true },
-      googleMapsLink: { type: String, trim: true },
-
-      // 👇 simple lat/lng, NOT GeoJSON, NO index
-      coordinates: {
-        lat: { type: Number, default: null },
-        lng: { type: Number, default: null },
+      address: {
+        type: String,
+        required: [true, "Address is required"],
+        trim: true,
+      },
+      city: {
+        type: String,
+        required: [true, "City is required"],
+        trim: true,
+        index: true,
+      },
+      state: {
+        type: String,
+        required: [true, "State is required"],
+        trim: true,
+        index: true,
+      },
+      country: {
+        type: String,
+        required: [true, "Country is required"],
+        trim: true,
+      },
+      pincode: {
+        type: String,
+        trim: true,
+      },
+      googleMapsLink: {
+        type: String,
+        trim: true,
       },
     },
 
