@@ -37,47 +37,18 @@ const propertySchema = new Schema(
     },
 
     location: {
-      address: {
-        type: String,
-        required: [true, "Address is required"],
-        trim: true,
-      },
-      city: {
-        type: String,
-        required: [true, "City is required"],
-        trim: true,
-        index: true,
-      },
-      state: {
-        type: String,
-        required: [true, "State is required"],
-        trim: true,
-        index: true,
-      },
-      country: {
-        type: String,
-        required: [true, "Country is required"],
-        trim: true,
-      },
-      pincode: {
-        type: String,
-        trim: true,
-      },
-      googleMapsLink: {
-        type: String,
-        trim: true,
-      },
+      address: { type: String, required: true, trim: true },
+      city: { type: String, required: true, trim: true, index: true },
+      state: { type: String, required: true, trim: true, index: true },
+      country: { type: String, required: true, trim: true },
+      pincode: { type: String, trim: true },
+      googleMapsLink: { type: String, trim: true },
+
+      // 👇 simple lat/lng, NOT GeoJSON, NO index
       coordinates: {
         lat: { type: Number, default: null },
         lng: { type: Number, default: null },
       },
-    },
-
-    rent: {
-      type: Number,
-      required: [true, "Rent is required"],
-      min: [0, "Rent cannot be negative"],
-      index: true,
     },
 
     deposit: {
@@ -127,25 +98,15 @@ const propertySchema = new Schema(
 
     // Images array with flexible structure
     images: {
-      type: [
-        {
-          path: { type: String, required: true },
-          filename: { type: String, default: null },
-          url: { type: String, default: null },
-          contentType: { type: String, default: null },
-          size: { type: Number, default: null },
-          uploadedAt: { type: Date, default: Date.now },
-        },
-      ],
+      type: [String],
       default: [],
       validate: {
         validator: function (arr) {
-          return arr && arr.length > 0;
+          return Array.isArray(arr) && arr.length > 0;
         },
         message: "At least one image is required",
       },
     },
-
     status: {
       type: String,
       enum: {
