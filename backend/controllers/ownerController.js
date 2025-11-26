@@ -138,22 +138,108 @@ exports.uploadProperty = async (req, res) => {
       bathrooms,
       area,
       amenities,
-      images,
+      images, // frontend sends array of Supabase URLs
       status,
       ownerId, // optional for admin
     } = req.body;
 
-    // Validate basic required fields
-    if (!title || rent === undefined || rent === null) {
+    // ---------- BASIC VALIDATION ----------
+    if (!title || !title.trim()) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: { message: "title and rent are required" },
+        error: { message: "Property title is required" },
         data: null,
       });
     }
 
-    // Ensure authenticated
+    if (!description || !description.trim()) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: { message: "Property description is required" },
+        data: null,
+      });
+    }
+
+    if (
+      !location ||
+      !location.address ||
+      !location.city ||
+      !location.state ||
+      !location.country
+    ) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: {
+          message:
+            "Complete location (address, city, state, country) is required",
+        },
+        data: null,
+      });
+    }
+
+    if (rent === undefined || rent === null || Number(rent) < 0) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: { message: "Valid rent is required" },
+        data: null,
+      });
+    }
+
+    if (bedrooms === undefined || bedrooms === null || Number(bedrooms) < 0) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: { message: "Valid number of bedrooms is required" },
+        data: null,
+      });
+    }
+
+    if (
+      bathrooms === undefined ||
+      bathrooms === null ||
+      Number(bathrooms) < 0
+    ) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: { message: "Valid number of bathrooms is required" },
+        data: null,
+      });
+    }
+
+    if (area === undefined || area === null || Number(area) <= 0) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: { message: "Valid property area is required" },
+        data: null,
+      });
+    }
+
+    // images: frontend sends array of URLs; schema expects [String]
+    const normImages = Array.isArray(images)
+      ? images.filter(Boolean)
+      : images
+      ? String(images)
+          .split(",")
+          .map((i) => i.trim())
+          .filter(Boolean)
+      : [];
+
+    if (!normImages || normImages.length === 0) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: { message: "At least one image URL is required" },
+        data: null,
+      });
+    }
+
+    // ---------- AUTH CHECK ----------
     const userId = req.user && (req.user.id || req.user._id);
     if (!userId) {
       return res.status(401).json({
@@ -164,13 +250,16 @@ exports.uploadProperty = async (req, res) => {
       });
     }
 
-    // Decide owner logic
+    // ---------- OWNER RESOLUTION (ADMIN vs OWNER) ----------
     let ownerDoc = null;
     let ownerRef = null;
     let ownerName = null;
+    let createdByRole = "owner";
 
     if (req.user.role === "admin") {
-      // Admin must provide ownerId
+      createdByRole = "admin";
+
+      // Admin must provide ownerId (Owner._id or User._id)
       if (!ownerId) {
         return res.status(400).json({
           statusCode: 400,
@@ -220,7 +309,7 @@ exports.uploadProperty = async (req, res) => {
       ownerName = ownerDoc.name || req.user.name || null;
     }
 
-    // Normalize arrays if they come as strings
+    // ---------- NORMALIZE AMENITIES ----------
     const normAmenities = Array.isArray(amenities)
       ? amenities
       : amenities
@@ -229,35 +318,53 @@ exports.uploadProperty = async (req, res) => {
           .map((a) => a.trim())
           .filter(Boolean)
       : [];
-    const normImages = Array.isArray(images)
-      ? images
-      : images
-      ? String(images)
-          .split(",")
-          .map((i) => i.trim())
-          .filter(Boolean)
-      : [];
 
+    // ---------- BUILD LOCATION OBJECT TO MATCH SCHEMA ----------
+    const locationPayload = {
+      address: location.address,
+      city: location.city,
+      state: location.state,
+      country: location.country,
+      pincode: location.pincode || "",
+      googleMapsLink: location.googleMapsLink || "",
+    };
+
+    // If frontend sends coordinates, store them
+    if (
+      location.coordinates &&
+      location.coordinates.lat != null &&
+      location.coordinates.lng != null
+    ) {
+      locationPayload.coordinates = {
+        lat: Number(location.coordinates.lat),
+        lng: Number(location.coordinates.lng),
+      };
+    }
+    // ---------- CREATE PROPERTY DOCUMENT ----------
     const property = new Property({
       owner: ownerRef,
       ownerName,
-      title,
-      description,
-      location,
-      rent,
-      deposit,
-      propertyType,
-      bedrooms,
-      bathrooms,
-      area,
+      createdByRole,
+      title: title.trim(),
+      description: description.trim(),
+      location: locationPayload,
+      rent: Number(rent),
+      deposit:
+        deposit !== undefined && deposit !== null && deposit !== ""
+          ? Number(deposit)
+          : undefined, // schema default will apply if undefined
+      propertyType: propertyType || "apartment",
+      bedrooms: Number(bedrooms),
+      bathrooms: Number(bathrooms),
+      area: Number(area),
       amenities: normAmenities,
-      images: normImages,
+      images: normImages, // <-- array of URL strings
       status: status || PROPERTY_STATUS.PENDING,
     });
 
     const saved = await property.save();
 
-    // add to owner.properties if not present
+    // ---------- ADD PROPERTY REFERENCE TO OWNER ----------
     if (ownerDoc) {
       ownerDoc.properties = ownerDoc.properties || [];
       if (
@@ -270,6 +377,7 @@ exports.uploadProperty = async (req, res) => {
       }
     }
 
+    // ---------- RESPONSE ----------
     return res.status(201).json({
       statusCode: 201,
       success: true,
@@ -288,11 +396,13 @@ exports.uploadProperty = async (req, res) => {
           bathrooms: saved.bathrooms,
           area: saved.area,
           amenities: saved.amenities,
-          images: saved.images,
+          images: saved.images, // array of URLs
           status: saved.status,
           owner: saved.owner,
           ownerName: saved.ownerName,
+          createdByRole: saved.createdByRole,
           createdAt: saved.createdAt,
+          updatedAt: saved.updatedAt,
         },
       },
     });
