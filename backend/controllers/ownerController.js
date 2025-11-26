@@ -320,17 +320,28 @@ exports.uploadProperty = async (req, res) => {
       : [];
 
     // ---------- BUILD LOCATION OBJECT TO MATCH SCHEMA ----------
-    const locationPayload = {
-      address: location.address,
-      city: location.city,
-      state: location.state,
-      country: location.country,
-      pincode: location.pincode || "",
-      googleMapsLink: location.googleMapsLink || "",
-    };
+   const locationPayload = {
+  address: location.address,
+  city: location.city,
+  state: location.state,
+  country: location.country,
+  pincode: location.pincode || "",
+  googleMapsLink: location.googleMapsLink || ""
+};
 
-    // If frontend sends coordinates, store them
-
+// ✅ Only set coordinates if frontend actually sends values
+if (
+  location.coordinates &&
+  location.coordinates.lat !== undefined &&
+  location.coordinates.lat !== null &&
+  location.coordinates.lng !== undefined &&
+  location.coordinates.lng !== null
+) {
+  locationPayload.coordinates = {
+    lat: Number(location.coordinates.lat),
+    lng: Number(location.coordinates.lng)
+  };
+}
     // ---------- CREATE PROPERTY DOCUMENT ----------
     const property = new Property({
       owner: ownerRef,
