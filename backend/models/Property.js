@@ -66,6 +66,10 @@ const propertySchema = new Schema(
         type: String,
         trim: true,
       },
+      coordinates: {
+        lat: { type: Number, default: null }, // latitude
+        lng: { type: Number, default: null }, // longitude
+      },
     },
 
     deposit: {
