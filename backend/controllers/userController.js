@@ -2,6 +2,7 @@ const Property = require("../models/Property");
 const Booking = require("../models/Booking");
 const User = require("../models/User");
 const Wishlist = require("../models/Wishlist");
+const UserSubscription = require("../models/UserSubscription");
 const { PROPERTY_STATUS, BOOKING_STATUS } = require("../utils/constants");
 
 // Get all published properties
@@ -527,7 +528,7 @@ const bookSiteVisit = async (req, res) => {
   }
 };
 
-// Unlock owner contact
+// Unlock owner contact USING SUBSCRIPTION
 const unlockOwnerContact = async (req, res) => {
   const { propertyId } = req.body;
 
@@ -543,6 +544,43 @@ const unlockOwnerContact = async (req, res) => {
       });
     }
 
+    // Ensure authenticated user
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({
+        statusCode: 401,
+        success: false,
+        error: {
+          message: "Authentication required",
+        },
+        data: null,
+      });
+    }
+
+    const userId = req.user._id;
+
+    // 1) Find active subscription with available views
+    let subscription = await UserSubscription.findOne({
+      userId: userId,
+      active: true,
+      endDate: { $gte: new Date() },
+      available: { $gt: 0 },
+    });
+
+    if (!subscription) {
+      // No active plan -> frontend should redirect to subscribe page
+      return res.status(403).json({
+        statusCode: 403,
+        success: false,
+        error: {
+          message: "No active subscription. Please subscribe to contact owner.",
+        },
+        data: {
+          requiresSubscription: true,
+        },
+      });
+    }
+
+    // 2) Load property + owner + owner.user
     const property = await Property.findById(propertyId).populate({
       path: "owner",
       populate: {
@@ -562,7 +600,7 @@ const unlockOwnerContact = async (req, res) => {
       });
     }
 
-    if (property.status !== PROPERTY_STATUS.PUBLISHED) {
+    if (typeof property.isAvailable === "function" && !property.isAvailable()) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
@@ -573,39 +611,65 @@ const unlockOwnerContact = async (req, res) => {
       });
     }
 
-    // Mock payment processing
-    // In a real app, you would integrate with a payment gateway here
-    const paymentSuccessful = true; // Mock payment success
-
-    if (paymentSuccessful) {
-      res.status(200).json({
-        statusCode: 200,
-        success: true,
-        error: null,
-        data: {
-          message: "Owner contact unlocked successfully",
-          ownerContact: {
-            name: property.owner.user.name,
-            email: property.owner.user.email,
-            phone: property.owner.user.phone || property.owner.phone,
-          },
-          property: {
-            id: property._id,
-            title: property.title,
-            location: property.location,
-          },
-        },
-      });
-    } else {
-      res.status(400).json({
-        statusCode: 400,
+    if (!property.owner || !property.owner.user) {
+      return res.status(404).json({
+        statusCode: 404,
         success: false,
         error: {
-          message: "Payment processing failed. Please try again.",
+          message: "Owner information not available",
         },
         data: null,
       });
     }
+
+    // 3) Check if this property was already viewed under this subscription
+    const alreadyViewed = subscription.hasViewedProperty(propertyId);
+
+    if (!alreadyViewed) {
+      // Use one view slot and record property if not viewed before
+      const updatedSub = await subscription.usePropertyView(propertyId);
+
+      if (!updatedSub) {
+        // No slot / inactive / race condition
+        return res.status(403).json({
+          statusCode: 403,
+          success: false,
+          error: {
+            message:
+              "Your contact limit is over or subscription is inactive. Please upgrade your plan.",
+          },
+          data: {
+            requiresSubscription: true,
+          },
+        });
+      }
+
+      subscription = updatedSub;
+    }
+
+    // 4) Return owner details
+    return res.status(200).json({
+      statusCode: 200,
+      success: true,
+      error: null,
+      data: {
+        message: "Owner contact unlocked successfully",
+        ownerContact: {
+          name: property.owner.user.name,
+          email: property.owner.user.email,
+          phone: property.owner.user.phone || property.owner.phone,
+        },
+        property: {
+          id: property._id,
+          title: property.title,
+          location: property.location,
+        },
+        subscription: {
+          alreadyViewed,
+          remainingViews: subscription.available,
+        },
+      },
+    });
   } catch (error) {
     console.error("Unlock owner contact error:", error);
     res.status(500).json({
@@ -813,6 +877,8 @@ const removeFromWishlist = async (req, res) => {
     });
   }
 };
+
+// basic CRUD for admin / internal use (kept same as original)
 exports.create = async (req, res) => {
   try {
     const user = new User(req.body);
