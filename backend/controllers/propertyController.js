@@ -270,7 +270,7 @@ const create = async (req, res) => {
 
 // ---------------------------------------------------------------------
 // SINGLE PROPERTY – WITH SUBSCRIPTION + DECREMENT LOGIC
-// GET /api/properties/:id
+// GET /api/properties/:id  and  /api/user/properties/:id
 // ---------------------------------------------------------------------
 
 const get = async (req, res) => {
@@ -322,8 +322,17 @@ const get = async (req, res) => {
         },
       };
 
-      return res.status(200).json(payload);
+      return res.status(200).json({
+        statusCode: 200,
+        success: true,
+        error: null,
+        data: {
+          message: "Property retrieved successfully",
+          property: payload,
+        },
+      });
     }
+
     // ---------- LOGGED-IN USER ----------
     const { subscriptionDoc, planDoc } = await getActiveUserSubscription(
       req.user._id
@@ -337,7 +346,16 @@ const get = async (req, res) => {
         null,
         null
       );
-      return res.status(200).json(payload);
+
+      return res.status(200).json({
+        statusCode: 200,
+        success: true,
+        error: null,
+        data: {
+          message: "Property retrieved successfully",
+          property: payload,
+        },
+      });
     }
 
     // Try to fetch owner user details (User table) if linked
@@ -374,14 +392,23 @@ const get = async (req, res) => {
         effectiveSub = await subscriptionDoc.usePropertyView(property._id);
         alreadyViewed = true;
       } else {
-        // 4) No views left and not viewed → no access
+        // 4) No views left and not viewed → no access (treat as inactive)
         const payload = buildPropertySubscriptionResponse(
           property,
           null,
           null,
           null
         );
-        return res.status(200).json(payload);
+
+        return res.status(200).json({
+          statusCode: 200,
+          success: true,
+          error: null,
+          data: {
+            message: "Property retrieved successfully",
+            property: payload,
+          },
+        });
       }
     }
 
@@ -396,7 +423,15 @@ const get = async (req, res) => {
     // Ensure flag is true after first view
     payload.subscription.alreadyViewedThisProperty = true;
 
-    return res.status(200).json(payload);
+    return res.status(200).json({
+      statusCode: 200,
+      success: true,
+      error: null,
+      data: {
+        message: "Property retrieved successfully",
+        property: payload,
+      },
+    });
   } catch (err) {
     console.error("Error in single property get:", err);
     return res.status(500).json({
