@@ -14,7 +14,8 @@ router.use(auth);
 router.use(userAuth);
 
 // Property routes
-router.get("/properties/:id", userController.getPropertyById);
+//router.get("/properties/:id", userController.getPropertyById);
+router.get("/properties/:id", auth, propertyController.get);
 
 // Wishlist routes
 router.post("/wishlist", userController.addToWishlist);
