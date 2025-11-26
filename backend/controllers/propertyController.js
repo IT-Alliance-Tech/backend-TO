@@ -324,7 +324,6 @@ const get = async (req, res) => {
 
       return res.status(200).json(payload);
     }
-
     // ---------- LOGGED-IN USER ----------
     const { subscriptionDoc, planDoc } = await getActiveUserSubscription(
       req.user._id

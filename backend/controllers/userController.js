@@ -530,37 +530,37 @@ const bookSiteVisit = async (req, res) => {
 
 // Unlock owner contact USING SUBSCRIPTION
 const unlockOwnerContact = async (req, res) => {
-  const { propertyId } = req.body;
-
   try {
+    const { propertyId, userId } = req.body;
+
     if (!propertyId) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
         error: {
-          message: "Property ID is required",
+          message: "Property ID is required"
         },
-        data: null,
+        data: null
       });
     }
 
-    // Ensure authenticated user
-    if (!req.user || !req.user._id) {
+    // Use userId from body, otherwise fallback to token user
+    const finalUserId = userId || (req.user && req.user._id);
+
+    if (!finalUserId) {
       return res.status(401).json({
         statusCode: 401,
         success: false,
         error: {
-          message: "Authentication required",
+          message: "User ID is required either from request body or token"
         },
-        data: null,
+        data: null
       });
     }
 
-    const userId = req.user._id;
-
     // 1) Find active subscription with available views
     let subscription = await UserSubscription.findOne({
-      userId: userId,
+      userId: finalUserId,
       active: true,
       endDate: { $gte: new Date() },
       available: { $gt: 0 },
