@@ -179,10 +179,10 @@ function buildPropertySubscriptionResponse(
         state: property.location?.state || null,
         country: property.location?.country || null,
         pincode: property.location?.pincode || null,
-        coordinates: property.location?.coordinates || {
-          lat: null,
-          lng: null,
-        },
+      //  coordinates: property.location?.coordinates || {
+      //    lat: null,
+      //    lng: null,
+      //  },
         googleMapsLink: property.location?.googleMapsLink || null,
       };
     }
