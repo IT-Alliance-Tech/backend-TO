@@ -330,16 +330,7 @@ exports.uploadProperty = async (req, res) => {
     };
 
     // If frontend sends coordinates, store them
-    if (
-      location.coordinates &&
-      location.coordinates.lat != null &&
-      location.coordinates.lng != null
-    ) {
-      locationPayload.coordinates = {
-        lat: Number(location.coordinates.lat),
-        lng: Number(location.coordinates.lng),
-      };
-    }
+
     // ---------- CREATE PROPERTY DOCUMENT ----------
     const property = new Property({
       owner: ownerRef,
