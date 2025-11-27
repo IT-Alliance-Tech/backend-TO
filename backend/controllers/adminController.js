@@ -5,7 +5,7 @@ const User = require("../models/User");
 const Owner = require("../models/Owner");
 const { PROPERTY_STATUS, BOOKING_STATUS } = require("../utils/constants");
 
-// Approve/reject property
+// Approve / reject / publish / sold property (single endpoint)
 const reviewProperty = async (req, res) => {
   let { status } = req.body;
 
@@ -29,14 +29,20 @@ const reviewProperty = async (req, res) => {
       finalStatus = PROPERTY_STATUS.APPROVED;
     } else if (normalizedStatus === "REJECTED") {
       finalStatus = PROPERTY_STATUS.REJECTED;
+    } else if (normalizedStatus === "PUBLISHED") {
+      finalStatus = PROPERTY_STATUS.PUBLISHED;
+    } else if (normalizedStatus === "SOLD") {
+      finalStatus = PROPERTY_STATUS.SOLD;
     }
 
+    // If status not one of the allowed
     if (!finalStatus) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
         error: {
-          message: "Invalid status. Must be either APPROVED or REJECTED",
+          message:
+            "Invalid status. Must be one of APPROVED, REJECTED, PUBLISHED or SOLD",
         },
         data: null,
       });
@@ -54,6 +60,91 @@ const reviewProperty = async (req, res) => {
       });
     }
 
+    const currentStatus = property.status; // "pending" | "approved" | "rejected" | "published" | "sold"
+
+    // If same status, no-op
+    if (currentStatus === finalStatus) {
+      return res.status(200).json({
+        statusCode: 200,
+        success: true,
+        error: null,
+        data: {
+          message: `Property is already ${finalStatus
+            .toString()
+            .toLowerCase()}`,
+          property: {
+            id: property._id,
+            title: property.title,
+            description: property.description,
+            location: property.location,
+            rent: property.rent,
+            deposit: property.deposit,
+            propertyType: property.propertyType,
+            bedrooms: property.bedrooms,
+            bathrooms: property.bathrooms,
+            area: property.area,
+            amenities: property.amenities,
+            images: property.images,
+            status: property.status,
+            owner: property.owner,
+            createdAt: property.createdAt,
+            updatedAt: property.updatedAt,
+          },
+        },
+      });
+    }
+
+    // ---------- STATUS TRANSITION RULES HERE ----------
+
+    // APPROVED: only from PENDING or REJECTED
+    if (finalStatus === PROPERTY_STATUS.APPROVED) {
+      if (
+        ![PROPERTY_STATUS.PENDING, PROPERTY_STATUS.REJECTED].includes(
+          currentStatus
+        )
+      ) {
+        return res.status(400).json({
+          statusCode: 400,
+          success: false,
+          error: {
+            message: "Only pending or rejected properties can be approved",
+          },
+          data: null,
+        });
+      }
+    }
+
+    // PUBLISHED: only from APPROVED
+    if (finalStatus === PROPERTY_STATUS.PUBLISHED) {
+      if (currentStatus !== PROPERTY_STATUS.APPROVED) {
+        return res.status(400).json({
+          statusCode: 400,
+          success: false,
+          error: {
+            message: "Only approved properties can be published",
+          },
+          data: null,
+        });
+      }
+    }
+
+    // SOLD: only from PUBLISHED
+    if (finalStatus === PROPERTY_STATUS.SOLD) {
+      if (currentStatus !== PROPERTY_STATUS.PUBLISHED) {
+        return res.status(400).json({
+          statusCode: 400,
+          success: false,
+          error: {
+            message: "Only published properties can be marked as sold",
+          },
+          data: null,
+        });
+      }
+    }
+
+    // REJECTED: allowed from any status (no rule needed)
+
+    // ---------- APPLY STATUS CHANGE ----------
     property.status = finalStatus;
     await property.save();
 
