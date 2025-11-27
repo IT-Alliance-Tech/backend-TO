@@ -8,13 +8,29 @@ const propertySchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "Owner", // or "User" depending on your model name
       required: true,
+      required: function () {
+        return this.createdByRole === "owner"; // only required when owner created
+      },
       index: true,
     },
 
-    // Admin can type an ownerName but we never validate it – display only
     ownerName: {
       type: String,
       default: null,
+      trim: true,
+    },
+
+    // Admin can store owner contact details for offline owners
+    ownerEmail: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    ownerPhone: {
+      type: String,
+      default: null,
+      trim: true,
     },
 
     createdByRole: {
@@ -73,7 +89,7 @@ const propertySchema = new Schema(
       // },
     },
 
-    // ✅ MISSING FIELD FIXED: rent
+    // Rent – needed for deposit, formattedRent etc.
     rent: {
       type: Number,
       required: [true, "Rent is required"],
@@ -85,7 +101,6 @@ const propertySchema = new Schema(
       type: Number,
       min: [0, "Deposit cannot be negative"],
       default: function () {
-        // if rent not set for some reason, fallback to 0
         return typeof this.rent === "number" ? this.rent * 2 : 0;
       },
     },
@@ -139,6 +154,7 @@ const propertySchema = new Schema(
       },
     },
 
+    // ✅ Your required statuses are here: approved, rejected, sold
     status: {
       type: String,
       enum: {
@@ -169,6 +185,19 @@ const propertySchema = new Schema(
     timestamps: true, // Automatically manages createdAt and updatedAt
   }
 );
+
+// Optional: validate admin must fill basic owner info
+propertySchema.pre("validate", function (next) {
+  if (this.createdByRole === "admin") {
+    if (!this.ownerName || !this.ownerEmail || !this.ownerPhone) {
+      this.invalidate(
+        "adminOwner",
+        "Admin must provide ownerName, ownerEmail and ownerPhone"
+      );
+    }
+  }
+  next();
+});
 
 // Indexes for better query performance
 propertySchema.index({ owner: 1, status: 1 });
@@ -211,7 +240,7 @@ propertySchema.pre("findOneAndUpdate", function (next) {
   next();
 });
 
-// Virtual for formatted rent (✅ SAFE NOW)
+// Virtual for formatted rent – SAFE if rent missing
 propertySchema.virtual("formattedRent").get(function () {
   if (typeof this.rent !== "number") return null;
   return `₹${this.rent.toLocaleString("en-IN")}`;
