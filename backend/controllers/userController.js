@@ -538,9 +538,9 @@ const unlockOwnerContact = async (req, res) => {
         statusCode: 400,
         success: false,
         error: {
-          message: "Property ID is required"
+          message: "Property ID is required",
         },
-        data: null
+        data: null,
       });
     }
 
@@ -552,9 +552,9 @@ const unlockOwnerContact = async (req, res) => {
         statusCode: 401,
         success: false,
         error: {
-          message: "User ID is required either from request body or token"
+          message: "User ID is required either from request body or token",
         },
-        data: null
+        data: null,
       });
     }
 
@@ -563,11 +563,9 @@ const unlockOwnerContact = async (req, res) => {
       userId: finalUserId,
       active: true,
       endDate: { $gte: new Date() },
-      available: { $gt: 0 },
     });
 
     if (!subscription) {
-      // No active plan -> frontend should redirect to subscribe page
       return res.status(403).json({
         statusCode: 403,
         success: false,
@@ -600,7 +598,11 @@ const unlockOwnerContact = async (req, res) => {
       });
     }
 
-    if (typeof property.isAvailable === "function" && !property.isAvailable()) {
+    // Optional: check status if you want
+    if (
+      property.status !== PROPERTY_STATUS.PUBLISHED &&
+      property.status !== PROPERTY_STATUS.APPROVED
+    ) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
@@ -610,8 +612,34 @@ const unlockOwnerContact = async (req, res) => {
         data: null,
       });
     }
+    let ownerPayload = null;
 
-    if (!property.owner || !property.owner.user) {
+    // CASE A → Property uploaded by ADMIN
+    if (property.createdByRole === "admin") {
+      ownerPayload = {
+        id: null,
+        name: property.ownerName || null,
+        phone:
+          property.ownerPhone ||
+          property.contactPhone ||
+          property.phone ||
+          null,
+        email:
+          property.ownerEmail ||
+          property.contactEmail ||
+          property.email ||
+          null,
+      };
+    } else if (property.owner && property.owner.user) {
+      ownerPayload = {
+        id: property.owner.user._id,
+        name: property.owner.user.name,
+        phone: property.owner.user.phone || property.owner.phone || null,
+        email: property.owner.user.email || null,
+      };
+    }
+
+    if (!ownerPayload || !ownerPayload.name) {
       return res.status(404).json({
         statusCode: 404,
         success: false,
@@ -626,17 +654,15 @@ const unlockOwnerContact = async (req, res) => {
     const alreadyViewed = subscription.hasViewedProperty(propertyId);
 
     if (!alreadyViewed) {
-      // Use one view slot and record property if not viewed before
-      const updatedSub = await subscription.usePropertyView(propertyId);
+      const remaining = subscription.available || 0;
 
-      if (!updatedSub) {
-        // No slot / inactive / race condition
+      if (remaining <= 0) {
         return res.status(403).json({
           statusCode: 403,
           success: false,
           error: {
             message:
-              "Your contact limit is over or subscription is inactive. Please upgrade your plan.",
+              "Your contact limit is over. Please upgrade your subscription.",
           },
           data: {
             requiresSubscription: true,
@@ -644,9 +670,22 @@ const unlockOwnerContact = async (req, res) => {
         });
       }
 
+      const updatedSub = await subscription.usePropertyView(propertyId);
+
+      if (!updatedSub) {
+        return res.status(403).json({
+          statusCode: 403,
+          success: false,
+          error: {
+            message:
+              "Subscription update failed. Please try again or contact support.",
+          },
+          data: null,
+        });
+      }
+
       subscription = updatedSub;
     }
-
     // 4) Return owner details
     return res.status(200).json({
       statusCode: 200,
@@ -654,11 +693,7 @@ const unlockOwnerContact = async (req, res) => {
       error: null,
       data: {
         message: "Owner contact unlocked successfully",
-        ownerContact: {
-          name: property.owner.user.name,
-          email: property.owner.user.email,
-          phone: property.owner.user.phone || property.owner.phone,
-        },
+        ownerContact: ownerPayload,
         property: {
           id: property._id,
           title: property.title,
