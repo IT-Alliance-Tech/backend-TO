@@ -7,9 +7,12 @@ const { generateAndSaveOTP, verifyOTP } = require("../services/otpService");
 const { validateEmail } = require("../utils/helpers");
 const { ROLES } = require("../utils/constants");
 
+// Added: subscription model
+const UserSubscription = require("../models/UserSubscription");
+const Subscription = require("../models/Subscription");
+
 // Generate JWT Token with validation
 const generateToken = async (user) => {
-  // Validate JWT_SECRET exists
   if (!process.env.JWT_SECRET) {
     throw new Error("JWT_SECRET is not configured on server");
   }
@@ -26,7 +29,7 @@ const generateToken = async (user) => {
   return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "30d" });
 };
 
-// Register user - FIXED: Non-blocking email
+// ================= REGISTER ==================
 const register = async (req, res) => {
   const {
     firstName,
@@ -59,7 +62,6 @@ const register = async (req, res) => {
       });
     }
 
-    // Validate ID proof for owner
     if (role === ROLES.OWNER) {
       if (!idProofNumber || !idProofType || !idProofImageUrl) {
         return res.status(400).json({
@@ -83,7 +85,6 @@ const register = async (req, res) => {
 
     await user.save();
 
-    // If registering as owner, also create owner profile
     if (role === ROLES.OWNER) {
       const owner = new Owner({
         user: user._id,
@@ -96,12 +97,11 @@ const register = async (req, res) => {
       await owner.save();
     }
 
-    // ✅ FIXED: Send email asynchronously (don't wait for it)
+    // Send OTP asynchronously
     generateAndSaveOTP(email)
       .then((otp) => sendOTPEmail(email, otp))
       .catch((err) => console.error("Failed to send OTP email:", err));
 
-    // Respond immediately without waiting for email
     res.status(201).json({
       success: true,
       error: null,
@@ -130,7 +130,7 @@ const register = async (req, res) => {
   }
 };
 
-// Update User
+// ================= UPDATE USER ==================
 const updateUser = async (req, res) => {
   const userId = req.user._id;
   const { id, firstName, lastName, name, phone, password } = req.body;
@@ -190,7 +190,7 @@ const updateUser = async (req, res) => {
   }
 };
 
-// Validate OTP after registration
+// ================= VALIDATE OTP ==================
 const validateOTP = async (req, res) => {
   const { email, otp } = req.body;
 
@@ -249,7 +249,7 @@ const validateOTP = async (req, res) => {
   }
 };
 
-// Login with password - FIXED: Better error handling
+// ================= LOGIN WITH PASSWORD ==================
 const loginWithPassword = async (req, res) => {
   const { email, password } = req.body;
 
@@ -301,13 +301,56 @@ const loginWithPassword = async (req, res) => {
 
     const token = await generateToken(user);
 
-    res.status(200).json({
+    // ===== Subscription status logic =====
+    let subscriptionStatus = "no subscription plan";
+    let activeSubscription = null;
+
+    try {
+      const now = new Date();
+
+      // fetch all subscriptions for user
+      const allSubs = await UserSubscription.find({ userId: user._id })
+        .populate(
+          "subscriptionId",
+          "name price features accessibleSlots durationDays timeLabel"
+        )
+        .lean();
+
+      if (!allSubs || allSubs.length === 0) {
+        subscriptionStatus = "no subscription plan";
+        activeSubscription = null;
+      } else {
+        // find an active subscription (within dates and active flag)
+        activeSubscription = allSubs.find(
+          (s) =>
+            new Date(s.startDate) <= now &&
+            now <= new Date(s.endDate) &&
+            s.active === true
+        );
+
+        if (activeSubscription) {
+          subscriptionStatus = "active";
+        } else {
+          subscriptionStatus = "plan has expired";
+          activeSubscription = null;
+        }
+      }
+    } catch (e) {
+      console.error("Subscription fetch error:", e);
+      subscriptionStatus = "no subscription plan";
+      activeSubscription = null;
+    }
+
+    // ===== Response =====
+    return res.status(200).json({
       statusCode: 200,
       success: true,
       error: null,
       data: {
         message: "Login successful",
         token,
+        subscriptionStatus,
+        subscription: activeSubscription,
         user: {
           id: user._id,
           email: user.email,
@@ -328,7 +371,7 @@ const loginWithPassword = async (req, res) => {
   }
 };
 
-// Login with OTP - FIXED: Better error handling
+// ================= LOGIN WITH OTP ==================
 const loginWithOTP = async (req, res) => {
   const { email, otp } = req.body;
 
@@ -380,13 +423,56 @@ const loginWithOTP = async (req, res) => {
 
     const token = await generateToken(user);
 
-    res.status(200).json({
+    // ===== Subscription status logic =====
+    let subscriptionStatus = "no subscription plan";
+    let activeSubscription = null;
+
+    try {
+      const now = new Date();
+
+      // fetch all subscriptions for user
+      const allSubs = await UserSubscription.find({ userId: user._id })
+        .populate(
+          "subscriptionId",
+          "name price features accessibleSlots durationDays timeLabel"
+        )
+        .lean();
+
+      if (!allSubs || allSubs.length === 0) {
+        subscriptionStatus = "no subscription plan";
+        activeSubscription = null;
+      } else {
+        // find an active subscription (within dates and active flag)
+        activeSubscription = allSubs.find(
+          (s) =>
+            new Date(s.startDate) <= now &&
+            now <= new Date(s.endDate) &&
+            s.active === true
+        );
+
+        if (activeSubscription) {
+          subscriptionStatus = "active";
+        } else {
+          subscriptionStatus = "plan has expired";
+          activeSubscription = null;
+        }
+      }
+    } catch (e) {
+      console.error("Subscription fetch error:", e);
+      subscriptionStatus = "no subscription plan";
+      activeSubscription = null;
+    }
+
+    // ===== Response =====
+    return res.status(200).json({
       statusCode: 200,
       success: true,
       error: null,
       data: {
         message: "Login successful",
         token,
+        subscriptionStatus,
+        subscription: activeSubscription,
         user: {
           id: user._id,
           email: user.email,
@@ -407,7 +493,7 @@ const loginWithOTP = async (req, res) => {
   }
 };
 
-// Send OTP - FIXED: Non-blocking
+// ================= SEND OTP ==================
 const sendOTP = async (req, res) => {
   const { email } = req.body;
 
@@ -422,12 +508,10 @@ const sendOTP = async (req, res) => {
       });
     }
 
-    // ✅ Send email asynchronously
     generateAndSaveOTP(email)
       .then((otp) => sendOTPEmail(email, otp))
       .catch((err) => console.error("Failed to send OTP email:", err));
 
-    // Respond immediately
     res.status(200).json({
       statusCode: 200,
       success: true,
@@ -452,7 +536,7 @@ const sendOTP = async (req, res) => {
   }
 };
 
-// Forgot Password Request - FIXED: Non-blocking
+// ================= FORGOT PASSWORD FLOW ==================
 const forgotPasswordRequest = async (req, res) => {
   const { email } = req.body;
 
@@ -467,7 +551,6 @@ const forgotPasswordRequest = async (req, res) => {
       });
     }
 
-    // ✅ Send email asynchronously
     generateAndSaveOTP(email)
       .then((otp) => sendOTPEmail(email, otp))
       .catch((err) => console.error("Failed to send OTP email:", err));
@@ -489,7 +572,6 @@ const forgotPasswordRequest = async (req, res) => {
   }
 };
 
-// Verify Forgot Password OTP
 const verifyForgotPasswordOTP = async (req, res) => {
   const { email, otp } = req.body;
 
@@ -531,7 +613,6 @@ const verifyForgotPasswordOTP = async (req, res) => {
   }
 };
 
-// Reset Password
 const resetPassword = async (req, res) => {
   const { email, otp, newPassword } = req.body;
 
@@ -576,7 +657,7 @@ const resetPassword = async (req, res) => {
   }
 };
 
-// Delete User
+// ================= DELETE USER ==================
 const deleteUser = async (req, res) => {
   const requesterRole = req.user.role;
   const { userId } = req.body;
