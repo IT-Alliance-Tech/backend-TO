@@ -86,6 +86,11 @@ const reviewProperty = async (req, res) => {
             amenities: property.amenities,
             images: property.images,
             status: property.status,
+            // admin owner info
+            ownerName: property.ownerName || null,
+            ownerEmail: property.ownerEmail || null,
+            ownerPhone: property.ownerPhone || null,
+            // linked owner account (if any)
             owner: property.owner,
             createdAt: property.createdAt,
             updatedAt: property.updatedAt,
@@ -94,7 +99,7 @@ const reviewProperty = async (req, res) => {
       });
     }
 
-    // ---------- STATUS TRANSITION RULES HERE ----------
+    // ---------- STATUS TRANSITION RULES ----------
 
     // APPROVED: only from PENDING or REJECTED
     if (finalStatus === PROPERTY_STATUS.APPROVED) {
@@ -170,6 +175,11 @@ const reviewProperty = async (req, res) => {
           amenities: property.amenities,
           images: property.images,
           status: property.status,
+          // admin owner info
+          ownerName: property.ownerName || null,
+          ownerEmail: property.ownerEmail || null,
+          ownerPhone: property.ownerPhone || null,
+          // linked owner account (if any)
           owner: property.owner,
           createdAt: property.createdAt,
           updatedAt: property.updatedAt,
@@ -190,7 +200,7 @@ const reviewProperty = async (req, res) => {
   }
 };
 
-// Publish property / update status
+// Publish property / update status (kept as you had it)
 const updatePropertyStatus = async (req, res) => {
   try {
     let { status } = req.body;
@@ -643,6 +653,7 @@ const getAllPropertiesForAdmin = async (req, res) => {
         [PROPERTY_STATUS.APPROVED]: 0,
         [PROPERTY_STATUS.PUBLISHED]: 0,
         [PROPERTY_STATUS.REJECTED]: 0,
+        [PROPERTY_STATUS.SOLD]: 0,
       }
     );
 
@@ -661,6 +672,12 @@ const getAllPropertiesForAdmin = async (req, res) => {
       amenities: property.amenities,
       images: property.images,
       status: property.status,
+
+      // admin-entered owner contact (for admin-created properties)
+      ownerName: property.ownerName || null,
+      ownerEmail: property.ownerEmail || null,
+      ownerPhone: property.ownerPhone || null,
+
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,
       owner:
