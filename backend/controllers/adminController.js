@@ -1,39 +1,60 @@
-const mongoose = require('mongoose');
-const Property = require('../models/Property');
-const Booking = require('../models/Booking');
-const User = require('../models/User');
-const Owner = require('../models/Owner');
-const { PROPERTY_STATUS, BOOKING_STATUS } = require('../utils/constants');
+const mongoose = require("mongoose");
+const Property = require("../models/Property");
+const Booking = require("../models/Booking");
+const User = require("../models/User");
+const Owner = require("../models/Owner");
+const { PROPERTY_STATUS, BOOKING_STATUS } = require("../utils/constants");
 
 // Approve/reject property
 const reviewProperty = async (req, res) => {
-  const { status } = req.body;
+  let { status } = req.body;
 
   try {
-    if (![PROPERTY_STATUS.APPROVED, PROPERTY_STATUS.REJECTED].includes(status)) {
+    if (!status) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
         error: {
-          message: 'Invalid status. Must be either APPROVED or REJECTED'
+          message: "Status is required",
         },
-        data: null
+        data: null,
       });
     }
 
-    const property = await Property.findById(req.params.id).populate('owner');
+    // Make status case-insensitive (APPROVED, approved, Approved…)
+    const normalizedStatus = status.toString().trim().toUpperCase();
+
+    let finalStatus = null;
+    if (normalizedStatus === "APPROVED") {
+      finalStatus = PROPERTY_STATUS.APPROVED;
+    } else if (normalizedStatus === "REJECTED") {
+      finalStatus = PROPERTY_STATUS.REJECTED;
+    }
+
+    if (!finalStatus) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: {
+          message: "Invalid status. Must be either APPROVED or REJECTED",
+        },
+        data: null,
+      });
+    }
+
+    const property = await Property.findById(req.params.id).populate("owner");
     if (!property) {
       return res.status(404).json({
         statusCode: 404,
         success: false,
         error: {
-          message: 'Property not found'
+          message: "Property not found",
         },
-        data: null
+        data: null,
       });
     }
 
-    property.status = status;
+    property.status = finalStatus;
     await property.save();
 
     res.status(200).json({
@@ -41,7 +62,9 @@ const reviewProperty = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: `Property ${status.toLowerCase()} successfully`,
+        message: `Property ${finalStatus
+          .toString()
+          .toLowerCase()} successfully`,
         property: {
           id: property._id,
           title: property.title,
@@ -58,83 +81,112 @@ const reviewProperty = async (req, res) => {
           status: property.status,
           owner: property.owner,
           createdAt: property.createdAt,
-          updatedAt: property.updatedAt
-        }
-      }
+          updatedAt: property.updatedAt,
+        },
+      },
     });
   } catch (error) {
-    console.error('Review property error:', error);
+    console.error("Review property error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
 
-// Publish property
+// Publish property / update status
 const updatePropertyStatus = async (req, res) => {
   try {
-    const { status } = req.body;
+    let { status } = req.body;
 
-    // Allow only valid statuses
-    if (!status || ![PROPERTY_STATUS.PUBLISHED, PROPERTY_STATUS.SOLD, PROPERTY_STATUS.REJECTED].includes(status)) {
+    if (!status) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: { message: 'Invalid status update' },
-        data: null
+        error: { message: "Status is required" },
+        data: null,
       });
     }
 
-    const property = await Property.findById(req.params.id)
+    // Case-insensitive: PUBLISHED / published / Published…
+    const normalizedStatus = status.toString().trim().toUpperCase();
+
+    let finalStatus = null;
+    if (normalizedStatus === "PUBLISHED") {
+      finalStatus = PROPERTY_STATUS.PUBLISHED;
+    } else if (normalizedStatus === "SOLD") {
+      finalStatus = PROPERTY_STATUS.SOLD;
+    } else if (normalizedStatus === "REJECTED") {
+      finalStatus = PROPERTY_STATUS.REJECTED;
+    }
+
+    // Allow only valid statuses
+    if (!finalStatus) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: { message: "Invalid status update" },
+        data: null,
+      });
+    }
+
+    const property = await Property.findById(req.params.id);
     if (!property) {
       return res.status(404).json({
         statusCode: 404,
         success: false,
-        error: { message: 'Property not found' },
-        data: null
+        error: { message: "Property not found" },
+        data: null,
       });
     }
 
     // Prevent redundant updates
-    if (property.status === status) {
+    if (property.status === finalStatus) {
       return res.status(200).json({
         statusCode: 200,
         success: true,
         error: null,
         data: {
-          message: `Property is already marked as ${status.toLowerCase()}`,
-          property
-        }
+          message: `Property is already marked as ${finalStatus
+            .toString()
+            .toLowerCase()}`,
+          property,
+        },
       });
     }
 
     // Status transition rules
-    if (status === PROPERTY_STATUS.PUBLISHED && property.status !== PROPERTY_STATUS.APPROVED) {
+    if (
+      finalStatus === PROPERTY_STATUS.PUBLISHED &&
+      property.status !== PROPERTY_STATUS.APPROVED
+    ) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: { message: 'Only approved properties can be published' },
-        data: null
+        error: { message: "Only approved properties can be published" },
+        data: null,
       });
     }
 
-    if (status === PROPERTY_STATUS.SOLD && property.status !== PROPERTY_STATUS.PUBLISHED) {
+    if (
+      finalStatus === PROPERTY_STATUS.SOLD &&
+      property.status !== PROPERTY_STATUS.PUBLISHED
+    ) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
-        error: { message: 'Only published properties can be marked as sold' },
-        data: null
+        error: { message: "Only published properties can be marked as sold" },
+        data: null,
       });
     }
 
     // REJECTED is always allowed, no condition needed
-    property.status = status;
+    property.status = finalStatus;
     await property.save();
 
     res.status(200).json({
@@ -142,53 +194,76 @@ const updatePropertyStatus = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: `Property marked as ${status.toLowerCase()} successfully`,
-        property
-      }
+        message: `Property marked as ${finalStatus
+          .toString()
+          .toLowerCase()} successfully`,
+        property,
+      },
     });
   } catch (error) {
-    console.error('Update property status error:', error);
+    console.error("Update property status error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
-      error: { message: 'Internal server error', details: error.message },
-      data: null
+      error: { message: "Internal server error", details: error.message },
+      data: null,
     });
   }
 };
 
 // Manage site visit requests
 const manageSiteVisit = async (req, res) => {
-  const { status } = req.body;
+  let { status } = req.body;
 
   try {
-    if (![BOOKING_STATUS.APPROVED, BOOKING_STATUS.REJECTED].includes(status)) {
+    if (!status) {
       return res.status(400).json({
         statusCode: 400,
         success: false,
         error: {
-          message: 'Invalid status. Must be either APPROVED or REJECTED'
+          message: "Status is required",
         },
-        data: null
+        data: null,
+      });
+    }
+
+    // Case-insensitive for booking status
+    const normalizedStatus = status.toString().trim().toUpperCase();
+
+    let finalStatus = null;
+    if (normalizedStatus === "APPROVED") {
+      finalStatus = BOOKING_STATUS.APPROVED;
+    } else if (normalizedStatus === "REJECTED") {
+      finalStatus = BOOKING_STATUS.REJECTED;
+    }
+
+    if (!finalStatus) {
+      return res.status(400).json({
+        statusCode: 400,
+        success: false,
+        error: {
+          message: "Invalid status. Must be either APPROVED or REJECTED",
+        },
+        data: null,
       });
     }
 
     const booking = await Booking.findById(req.params.id)
-      .populate('user')
-      .populate('property');
-    
+      .populate("user")
+      .populate("property");
+
     if (!booking) {
       return res.status(404).json({
         statusCode: 404,
         success: false,
         error: {
-          message: 'Booking not found'
+          message: "Booking not found",
         },
-        data: null
+        data: null,
       });
     }
 
-    booking.status = status;
+    booking.status = finalStatus;
     await booking.save();
 
     res.status(200).json({
@@ -196,7 +271,9 @@ const manageSiteVisit = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: `Site visit ${status.toLowerCase()} successfully`,
+        message: `Site visit ${finalStatus
+          .toString()
+          .toLowerCase()} successfully`,
         booking: {
           id: booking._id,
           user: booking.user,
@@ -205,20 +282,20 @@ const manageSiteVisit = async (req, res) => {
           status: booking.status,
           message: booking.message,
           createdAt: booking.createdAt,
-          updatedAt: booking.updatedAt
-        }
-      }
+          updatedAt: booking.updatedAt,
+        },
+      },
     });
   } catch (error) {
-    console.error('Manage site visit error:', error);
+    console.error("Manage site visit error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
@@ -226,36 +303,36 @@ const manageSiteVisit = async (req, res) => {
 // Get all users
 const getAllUsers = async (req, res) => {
   try {
-    const users = await User.find({}).select('-password');
+    const users = await User.find({}).select("-password");
 
     res.status(200).json({
       statusCode: 200,
       success: true,
       error: null,
       data: {
-        message: 'Users retrieved successfully',
-        users: users.map(user => ({
+        message: "Users retrieved successfully",
+        users: users.map((user) => ({
           id: user._id,
           name: user.name,
           email: user.email,
           role: user.role,
           isVerified: user.verified,
           createdAt: user.createdAt,
-          updatedAt: user.updatedAt
+          updatedAt: user.updatedAt,
         })),
-        totalUsers: users.length
-      }
+        totalUsers: users.length,
+      },
     });
   } catch (error) {
-    console.error('Get all users error:', error);
+    console.error("Get all users error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
@@ -263,11 +340,11 @@ const getAllUsers = async (req, res) => {
 // Get all properties for admin
 const getAllPropertiesForAdmin = async (req, res) => {
   try {
-    const { 
+    const {
       title,
-      propertyId, 
-      customerEmail, 
-      customerName, 
+      propertyId,
+      customerEmail,
+      customerName,
       customerPhone,
       status,
       propertyType,
@@ -277,8 +354,8 @@ const getAllPropertiesForAdmin = async (req, res) => {
       bathrooms,
       page = 1,
       limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortBy = "createdAt",
+      sortOrder = "desc",
     } = req.query;
 
     // Validate pagination parameters
@@ -287,13 +364,13 @@ const getAllPropertiesForAdmin = async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     // Validate sort parameters
-    const allowedSortFields = ['createdAt', 'updatedAt', 'rent', 'title'];
-    const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
-    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    const allowedSortFields = ["createdAt", "updatedAt", "rent", "title"];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
+    const sortDirection = sortOrder === "asc" ? 1 : -1;
 
     // Build property filters
     let propertyFilters = {};
-    
+
     if (propertyId && mongoose.Types.ObjectId.isValid(propertyId)) {
       propertyFilters._id = propertyId;
     }
@@ -301,10 +378,10 @@ const getAllPropertiesForAdmin = async (req, res) => {
       propertyFilters.status = status;
     }
     if (propertyType) {
-      propertyFilters.propertyType = new RegExp(propertyType, 'i');
+      propertyFilters.propertyType = new RegExp(propertyType, "i");
     }
     if (title) {
-      propertyFilters.title = new RegExp(title, 'i'); 
+      propertyFilters.title = new RegExp(title, "i");
     }
     if (minRent || maxRent) {
       propertyFilters.rent = {};
@@ -325,30 +402,32 @@ const getAllPropertiesForAdmin = async (req, res) => {
     // Build user filters for aggregation
     let userMatchStage = {};
     if (customerEmail) {
-      userMatchStage.email = new RegExp(customerEmail, 'i');
+      userMatchStage.email = new RegExp(customerEmail, "i");
     }
     if (customerPhone) {
-      userMatchStage.phone = new RegExp(customerPhone, 'i');
+      userMatchStage.phone = new RegExp(customerPhone, "i");
     }
     if (customerName) {
       userMatchStage.$or = [
-        { 'userData.firstName': new RegExp(customerName, 'i') },
-        { 'userData.lastName': new RegExp(customerName, 'i') },
-        { 'userData.name': new RegExp(customerName, 'i') },
+        { "userData.firstName": new RegExp(customerName, "i") },
+        { "userData.lastName": new RegExp(customerName, "i") },
+        { "userData.name": new RegExp(customerName, "i") },
         {
           $expr: {
             $regexMatch: {
-              input: { $concat: ['$userData.firstName', ' ', '$userData.lastName'] },
+              input: {
+                $concat: ["$userData.firstName", " ", "$userData.lastName"],
+              },
               regex: customerName,
-              options: 'i'
-            }
-          }
-        }
+              options: "i",
+            },
+          },
+        },
       ];
     }
 
     const hasUserFilters = customerEmail || customerPhone || customerName;
-    
+
     let properties, totalCount;
 
     if (hasUserFilters) {
@@ -357,107 +436,124 @@ const getAllPropertiesForAdmin = async (req, res) => {
         { $match: propertyFilters },
         {
           $lookup: {
-            from: 'owners',
-            localField: 'owner',
-            foreignField: '_id',
-            as: 'ownerData'
-          }
+            from: "owners",
+            localField: "owner",
+            foreignField: "_id",
+            as: "ownerData",
+          },
         },
-        { $unwind: { path: '$ownerData', preserveNullAndEmptyArrays: true } },
+        { $unwind: { path: "$ownerData", preserveNullAndEmptyArrays: true } },
         {
           $lookup: {
-            from: 'users',
-            localField: 'ownerData.user',
-            foreignField: '_id',
-            as: 'userData'
-          }
+            from: "users",
+            localField: "ownerData.user",
+            foreignField: "_id",
+            as: "userData",
+          },
         },
-        { $unwind: { path: '$userData', preserveNullAndEmptyArrays: true } },
-        ...(Object.keys(userMatchStage).length > 0 ? [{ $match: userMatchStage }] : []),
+        { $unwind: { path: "$userData", preserveNullAndEmptyArrays: true } },
+        ...(Object.keys(userMatchStage).length > 0
+          ? [{ $match: userMatchStage }]
+          : []),
         { $sort: { [sortField]: sortDirection } },
         {
           $facet: {
-            data: [
-              { $skip: skip },
-              { $limit: limitNum }
-            ],
-            totalCount: [{ $count: 'count' }]
-          }
-        }
+            data: [{ $skip: skip }, { $limit: limitNum }],
+            totalCount: [{ $count: "count" }],
+          },
+        },
       ];
 
       const result = await Property.aggregate(pipeline);
       properties = result[0].data;
       totalCount = result[0].totalCount[0]?.count || 0;
 
-      properties = properties.map(prop => ({
+      properties = properties.map((prop) => ({
         ...prop,
-        owner: prop.ownerData ? {
-          ...prop.ownerData,
-          user: prop.userData || null
-        } : null
+        owner: prop.ownerData
+          ? {
+              ...prop.ownerData,
+              user: prop.userData || null,
+            }
+          : null,
       }));
     } else {
       // Normal find when no user filters
       const countPromise = Property.countDocuments(propertyFilters);
       const propertiesPromise = Property.find(propertyFilters)
         .populate({
-          path: 'owner',
+          path: "owner",
           populate: {
-            path: 'user',
-            model: 'User',
-            select: 'firstName lastName name email phone verified role'
-          }
+            path: "user",
+            model: "User",
+            select: "firstName lastName name email phone verified role",
+          },
         })
         .sort({ [sortField]: sortDirection })
         .skip(skip)
         .limit(limitNum);
 
-      [totalCount, properties] = await Promise.all([countPromise, propertiesPromise]);
+      [totalCount, properties] = await Promise.all([
+        countPromise,
+        propertiesPromise,
+      ]);
     }
 
     // Status breakdown
     const statusBreakdownPipeline = [
       { $match: hasUserFilters ? {} : propertyFilters },
-      ...(hasUserFilters ? [
-        {
-          $lookup: {
-            from: 'owners',
-            localField: 'owner',
-            foreignField: '_id',
-            as: 'ownerData'
-          }
-        },
-        { $unwind: { path: '$ownerData', preserveNullAndEmptyArrays: true } },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'ownerData.user',
-            foreignField: '_id',
-            as: 'userData'
-          }
-        },
-        { $unwind: { path: '$userData', preserveNullAndEmptyArrays: true } },
-        ...(Object.keys(userMatchStage).length > 0 ? [{ $match: userMatchStage }] : [])
-      ] : []),
+      ...(hasUserFilters
+        ? [
+            {
+              $lookup: {
+                from: "owners",
+                localField: "owner",
+                foreignField: "_id",
+                as: "ownerData",
+              },
+            },
+            {
+              $unwind: { path: "$ownerData", preserveNullAndEmptyArrays: true },
+            },
+            {
+              $lookup: {
+                from: "users",
+                localField: "ownerData.user",
+                foreignField: "_id",
+                as: "userData",
+              },
+            },
+            {
+              $unwind: { path: "$userData", preserveNullAndEmptyArrays: true },
+            },
+            ...(Object.keys(userMatchStage).length > 0
+              ? [{ $match: userMatchStage }]
+              : []),
+          ]
+        : []),
       {
         $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
     ];
 
-    const statusBreakdownResult = await Property.aggregate(statusBreakdownPipeline);
-    const statusBreakdown = statusBreakdownResult.reduce((acc, item) => {
-      acc[item._id] = item.count;
-      return acc;
-    }, {
-      [PROPERTY_STATUS.PENDING]: 0,
-      [PROPERTY_STATUS.APPROVED]: 0,
-      [PROPERTY_STATUS.PUBLISHED]: 0,
-      [PROPERTY_STATUS.REJECTED]: 0
-    });
+    const statusBreakdownResult = await Property.aggregate(
+      statusBreakdownPipeline
+    );
+    const statusBreakdown = statusBreakdownResult.reduce(
+      (acc, item) => {
+        acc[item._id] = item.count;
+        return acc;
+      },
+      {
+        [PROPERTY_STATUS.PENDING]: 0,
+        [PROPERTY_STATUS.APPROVED]: 0,
+        [PROPERTY_STATUS.PUBLISHED]: 0,
+        [PROPERTY_STATUS.REJECTED]: 0,
+      }
+    );
 
     // Format response
     const formattedProperties = properties.map((property) => ({
@@ -476,18 +572,19 @@ const getAllPropertiesForAdmin = async (req, res) => {
       status: property.status,
       createdAt: property.createdAt,
       updatedAt: property.updatedAt,
-      owner: property.owner && property.owner.user
-        ? {
-            id: property.owner.user._id,
-            firstName: property.owner.user.firstName,
-            lastName: property.owner.user.lastName,
-            name: property.owner.user.name,
-            email: property.owner.user.email,
-            phone: property.owner.user.phone,
-            verified: property.owner.user.verified,
-            role: property.owner.user.role
-          }
-        : null
+      owner:
+        property.owner && property.owner.user
+          ? {
+              id: property.owner.user._id,
+              firstName: property.owner.user.firstName,
+              lastName: property.owner.user.lastName,
+              name: property.owner.user.name,
+              email: property.owner.user.email,
+              phone: property.owner.user.phone,
+              verified: property.owner.user.verified,
+              role: property.owner.user.role,
+            }
+          : null,
     }));
 
     const totalPages = Math.ceil(totalCount / limitNum);
@@ -499,7 +596,7 @@ const getAllPropertiesForAdmin = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: 'Properties retrieved successfully',
+        message: "Properties retrieved successfully",
         properties: formattedProperties,
         pagination: {
           currentPage: pageNum,
@@ -507,7 +604,7 @@ const getAllPropertiesForAdmin = async (req, res) => {
           totalProperties: totalCount,
           propertiesPerPage: limitNum,
           hasNextPage,
-          hasPrevPage
+          hasPrevPage,
         },
         filters: {
           propertyId: propertyId || null,
@@ -518,36 +615,35 @@ const getAllPropertiesForAdmin = async (req, res) => {
           propertyType: propertyType || null,
           rentRange: { min: minRent || null, max: maxRent || null },
           bedrooms: bedrooms || null,
-          bathrooms: bathrooms || null
+          bathrooms: bathrooms || null,
         },
         sorting: {
           sortBy: sortField,
-          sortOrder: sortOrder
+          sortOrder: sortOrder,
         },
-        statusBreakdown
-      }
+        statusBreakdown,
+      },
     });
   } catch (error) {
-    console.error('Get all properties for admin error:', error);
+    console.error("Get all properties for admin error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
-
 
 // Get all bookings for admin
 const getAllBookings = async (req, res) => {
   try {
     const bookings = await Booking.find({})
-      .populate('user')
-      .populate('property')
+      .populate("user")
+      .populate("property")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -555,45 +651,50 @@ const getAllBookings = async (req, res) => {
       success: true,
       error: null,
       data: {
-        message: 'Bookings retrieved successfully',
-        bookings: bookings.map(booking => ({
+        message: "Bookings retrieved successfully",
+        bookings: bookings.map((booking) => ({
           id: booking._id,
           user: {
             id: booking.user._id,
             name: booking.user.name,
-            email: booking.user.email
+            email: booking.user.email,
           },
           property: {
             id: booking.property._id,
             title: booking.property.title,
             location: booking.property.location,
-            rent: booking.property.rent
+            rent: booking.property.rent,
           },
           visitDate: booking.visitDate,
           status: booking.status,
           message: booking.message,
           createdAt: booking.createdAt,
-          updatedAt: booking.updatedAt
+          updatedAt: booking.updatedAt,
         })),
         totalBookings: bookings.length,
         statusBreakdown: {
-          pending: bookings.filter(b => b.status === BOOKING_STATUS.PENDING).length,
-          approved: bookings.filter(b => b.status === BOOKING_STATUS.APPROVED).length,
-          rejected: bookings.filter(b => b.status === BOOKING_STATUS.REJECTED).length,
-          completed: bookings.filter(b => b.status === BOOKING_STATUS.COMPLETED).length
-        }
-      }
+          pending: bookings.filter((b) => b.status === BOOKING_STATUS.PENDING)
+            .length,
+          approved: bookings.filter((b) => b.status === BOOKING_STATUS.APPROVED)
+            .length,
+          rejected: bookings.filter((b) => b.status === BOOKING_STATUS.REJECTED)
+            .length,
+          completed: bookings.filter(
+            (b) => b.status === BOOKING_STATUS.COMPLETED
+          ).length,
+        },
+      },
     });
   } catch (error) {
-    console.error('Get all bookings error:', error);
+    console.error("Get all bookings error:", error);
     res.status(500).json({
       statusCode: 500,
       success: false,
       error: {
-        message: 'Internal server error',
-        details: error.message
+        message: "Internal server error",
+        details: error.message,
       },
-      data: null
+      data: null,
     });
   }
 };
@@ -604,5 +705,5 @@ module.exports = {
   manageSiteVisit,
   getAllUsers,
   getAllPropertiesForAdmin,
-  getAllBookings
+  getAllBookings,
 };

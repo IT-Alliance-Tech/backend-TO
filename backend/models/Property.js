@@ -35,6 +35,7 @@ const propertySchema = new Schema(
       required: [true, "Property description is required"],
       trim: true,
     },
+
     location: {
       address: {
         type: String,
@@ -67,16 +68,25 @@ const propertySchema = new Schema(
         trim: true,
       },
       // coordinates: {
-       // lat: { type: Number, default: null }, // latitude
-        //lng: { type: Number, default: null }, // longitude
-      //},
+      //   lat: { type: Number, default: null }, // latitude
+      //   lng: { type: Number, default: null }, // longitude
+      // },
+    },
+
+    // ✅ MISSING FIELD FIXED: rent
+    rent: {
+      type: Number,
+      required: [true, "Rent is required"],
+      min: [0, "Rent cannot be negative"],
+      index: true,
     },
 
     deposit: {
       type: Number,
       min: [0, "Deposit cannot be negative"],
       default: function () {
-        return this.rent * 2;
+        // if rent not set for some reason, fallback to 0
+        return typeof this.rent === "number" ? this.rent * 2 : 0;
       },
     },
 
@@ -128,6 +138,7 @@ const propertySchema = new Schema(
         message: "At least one image is required",
       },
     },
+
     status: {
       type: String,
       enum: {
@@ -200,8 +211,9 @@ propertySchema.pre("findOneAndUpdate", function (next) {
   next();
 });
 
-// Virtual for formatted rent
+// Virtual for formatted rent (✅ SAFE NOW)
 propertySchema.virtual("formattedRent").get(function () {
+  if (typeof this.rent !== "number") return null;
   return `₹${this.rent.toLocaleString("en-IN")}`;
 });
 
