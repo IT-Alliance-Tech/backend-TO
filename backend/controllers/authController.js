@@ -330,6 +330,18 @@ const loginWithPassword = async (req, res) => {
 
         if (activeSubscription) {
           subscriptionStatus = "active";
+
+          const now = new Date();
+          const end = new Date(activeSubscription.endDate);
+
+          // Calculate remaining days
+          const remainingDays = Math.max(
+            0,
+            Math.ceil((end - now) / (1000 * 60 * 60 * 24))
+          );
+
+          // attach remaining days inside subscription object
+          activeSubscription.remainingDays = remainingDays;
         } else {
           subscriptionStatus = "plan has expired";
           activeSubscription = null;

@@ -5,6 +5,58 @@ const User = require("../models/User");
 const Owner = require("../models/Owner");
 const { PROPERTY_STATUS, BOOKING_STATUS } = require("../utils/constants");
 
+// Helper: format property for admin responses
+function formatPropertyForAdmin(property) {
+  // property.owner may be populated Owner with nested user
+  const ownerDoc = property.owner || null;
+  const ownerUser = ownerDoc && ownerDoc.user ? ownerDoc.user : null;
+
+  const owner = {
+    id: ownerDoc ? ownerDoc._id : null,
+    name: (ownerUser && ownerUser.name) || property.ownerName || null,
+    firstName: ownerUser ? ownerUser.firstName || null : null,
+    lastName: ownerUser ? ownerUser.lastName || null : null,
+    email: (ownerUser && ownerUser.email) || property.ownerEmail || null,
+    phone: (ownerUser && ownerUser.phone) || property.ownerPhone || null,
+    verified:
+      ownerUser && typeof ownerUser.verified !== "undefined"
+        ? ownerUser.verified
+        : ownerDoc
+        ? ownerDoc.verified
+        : null,
+    role: ownerUser ? ownerUser.role || "owner" : "owner",
+    idProof: ownerDoc
+      ? {
+          type: ownerDoc.idProofType || null,
+          number: ownerDoc.idProofNumber || null,
+          imageUrl: ownerDoc.idProofImageUrl || null,
+        }
+      : null,
+  };
+
+  return {
+    id: property._id,
+    title: property.title,
+    description: property.description,
+    location: property.location,
+    rent: typeof property.rent === "number" ? property.rent : null,
+    deposit: property.deposit ?? null,
+    propertyType: property.propertyType,
+    bedrooms: property.bedrooms,
+    bathrooms: property.bathrooms,
+    area: property.area,
+    amenities: property.amenities,
+    images: property.images,
+    status: property.status,
+    ownerName: property.ownerName || null,
+    ownerEmail: property.ownerEmail || null,
+    ownerPhone: property.ownerPhone || null,
+    owner, // clean summarized owner object
+    createdAt: property.createdAt,
+    updatedAt: property.updatedAt,
+  };
+}
+
 // Approve / reject / publish / sold property (single endpoint)
 const reviewProperty = async (req, res) => {
   let { status } = req.body;
@@ -48,7 +100,16 @@ const reviewProperty = async (req, res) => {
       });
     }
 
-    const property = await Property.findById(req.params.id).populate("owner");
+    // populate owner + owner.user for clean owner info
+    const property = await Property.findById(req.params.id).populate({
+      path: "owner",
+      populate: {
+        path: "user",
+        model: "User",
+        select: "firstName lastName name email phone verified role",
+      },
+    });
+
     if (!property) {
       return res.status(404).json({
         statusCode: 404,
@@ -62,7 +123,7 @@ const reviewProperty = async (req, res) => {
 
     const currentStatus = property.status; // "pending" | "approved" | "rejected" | "published" | "sold"
 
-    // If same status, no-op
+    // If same status, no-op (still return clean formatted response)
     if (currentStatus === finalStatus) {
       return res.status(200).json({
         statusCode: 200,
@@ -72,29 +133,7 @@ const reviewProperty = async (req, res) => {
           message: `Property is already ${finalStatus
             .toString()
             .toLowerCase()}`,
-          property: {
-            id: property._id,
-            title: property.title,
-            description: property.description,
-            location: property.location,
-            rent: property.rent,
-            deposit: property.deposit,
-            propertyType: property.propertyType,
-            bedrooms: property.bedrooms,
-            bathrooms: property.bathrooms,
-            area: property.area,
-            amenities: property.amenities,
-            images: property.images,
-            status: property.status,
-            // admin owner info
-            ownerName: property.ownerName || null,
-            ownerEmail: property.ownerEmail || null,
-            ownerPhone: property.ownerPhone || null,
-            // linked owner account (if any)
-            owner: property.owner,
-            createdAt: property.createdAt,
-            updatedAt: property.updatedAt,
-          },
+          property: formatPropertyForAdmin(property),
         },
       });
     }
@@ -147,11 +186,17 @@ const reviewProperty = async (req, res) => {
       }
     }
 
-    // REJECTED: allowed from any status (no rule needed)
+    // REJECTED: allowed from any status (no extra rule)
 
     // ---------- APPLY STATUS CHANGE ----------
+    // To avoid validation errors from old documents, you can either:
+    // A) do direct update (no full validation), or
+    // B) save with validation if your data is clean.
+    // I'll keep simple `save()` – if you want the no-validation version, I can switch to updateOne.
     property.status = finalStatus;
     await property.save();
+
+    const formatted = formatPropertyForAdmin(property);
 
     res.status(200).json({
       statusCode: 200,
@@ -161,29 +206,7 @@ const reviewProperty = async (req, res) => {
         message: `Property ${finalStatus
           .toString()
           .toLowerCase()} successfully`,
-        property: {
-          id: property._id,
-          title: property.title,
-          description: property.description,
-          location: property.location,
-          rent: property.rent,
-          deposit: property.deposit,
-          propertyType: property.propertyType,
-          bedrooms: property.bedrooms,
-          bathrooms: property.bathrooms,
-          area: property.area,
-          amenities: property.amenities,
-          images: property.images,
-          status: property.status,
-          // admin owner info
-          ownerName: property.ownerName || null,
-          ownerEmail: property.ownerEmail || null,
-          ownerPhone: property.ownerPhone || null,
-          // linked owner account (if any)
-          owner: property.owner,
-          createdAt: property.createdAt,
-          updatedAt: property.updatedAt,
-        },
+        property: formatted,
       },
     });
   } catch (error) {
@@ -200,7 +223,7 @@ const reviewProperty = async (req, res) => {
   }
 };
 
-// Publish property / update status (kept as you had it)
+// Publish property / update status (kept same as your logic)
 const updatePropertyStatus = async (req, res) => {
   try {
     let { status } = req.body;
